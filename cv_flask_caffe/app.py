@@ -13,13 +13,6 @@ MEAN_FILE = config["mean_file"]
 LABELS_FILE = config["labels_file"]
 UPLOAD_FOLDER = config["upload_folder"]
 
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-CAFFE_MODEL = BASE_DIR + "/snapshot_iter_110310.caffemodel"
-DEPLOY_FILE = BASE_DIR + "/deploy.prototxt"
-MEAN_FILE = BASE_DIR + "/mean.binaryproto"
-LABELS_FILE = BASE_DIR + "/labels.txt"
-UPLOAD_FOLDER = BASE_DIR + "/uploads/"
-
 # this is model-specific
 def pre_process(filepath):
     size=(224,224)
