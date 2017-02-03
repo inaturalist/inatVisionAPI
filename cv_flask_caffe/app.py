@@ -40,7 +40,7 @@ def home():
             image_files=image_files,
             labels_file=LABELS_FILE,
             mean_file=MEAN_FILE,
-            use_gpu=True
+            use_gpu=False
         )
 
         return jsonify(classifications)
