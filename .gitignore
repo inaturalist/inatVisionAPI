@@ -87,3 +87,7 @@ ENV/
 
 # Rope project settings
 .ropeproject
+
+# we have a node project in here, too
+node_modules
+npm-debug.log
