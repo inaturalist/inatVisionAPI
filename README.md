@@ -23,6 +23,7 @@ install some required packages:
 - `git clone --recurse-submodules https://github.com/tensorflow/serving`
 - `cd serving/tensorflow`
 - `./configure`
+- `cd ../..`
 - `bazel build tensorflow_serving/...`
 - get some coffee or lunch. building tensorflow takes a while.
 
