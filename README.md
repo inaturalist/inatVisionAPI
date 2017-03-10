@@ -1,5 +1,7 @@
 # computervision
 
+We're doing some computer vision stuff at iNat.
+
 ## tfserving
 
 ### tensorflow serving setup
