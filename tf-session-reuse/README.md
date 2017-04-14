@@ -15,3 +15,14 @@ Copy the optimized model into place: `cp /tmp/optimized_model-3.pb tf-session-re
 
 Run the app:
 `python app.py`
+
+
+Some performance data from my 15" MBP, 2.5GHz i7:
+
+| task               | pip tensorflow | compiled tensorflow | compiled tensorflow + pillow-simd |
+| ------------------ | -------------- | ------------------- | --------------------------------- |
+| 100x medium.jpg    | 25 seconds     | 17 seconds          | 15 seconds                        |
+| 100x iphone photos | 81 seconds     | 72 seconds          | 46 seconds                        | 
+
+The larger the images coming into the pipeline, the more important optimized resize (like pillow-simd) is.
+
