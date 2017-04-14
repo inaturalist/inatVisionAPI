@@ -7,8 +7,11 @@ If the device you're installing on has AVX2 or SSE4, install pillow-simd for fas
 `pip install pillow-simd` if you only have SSE4, or `CC="cc -mavx2" pip install pillow-simd` if you have AVX2. I saw a significant increase in performance from pillow to pillow-simd with SSE4, less of an increase for AVX2.
 otherwise, install pillow from pip: `pip install pillow`
 
-Install other requirements
+Install other requirements:
 `pip install flask flask_wtf scipy numpy`
+
+Copy the optimized model into place: `cp /tmp/optimized_model-3.pb tf-session-reuse/`
+
 
 Run the app:
 `python app.py`
