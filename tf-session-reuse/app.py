@@ -9,22 +9,23 @@ import numpy as np
 from scipy.misc import imread, imresize
 import tensorflow as tf
 import os
+import yaml
 
-def _load_taxa_labels(taxa_file):
-    taxa = {}
+config = yaml.safe_load(open("config.yml"))
+
+def _load_taxon_ids(taxa_file):
+    taxon_ids = []
     with open(taxa_file) as f:
         for line in f:
-            iter, taxon = line.rstrip().split(": ")
-            taxa[int(iter)] = int(taxon)
+            iter, taxon_id = line.rstrip().split(": ")
+            taxon_ids.append(int(taxon_id))
     return taxa
-taxa = _load_taxa_labels("taxa.txt")
+TENSORFLOW_TAXON_IDS = _load_taxon_ids("taxa.txt")
 
 app = Flask(__name__)
-app.config.from_object(__name__)
-app.debug = True
-app.secret_key = "asdlkfjlkdsjklds"
+app.secret_key = config["app_secret"]
 
-UPLOAD_FOLDER = 'static/'
+UPLOAD_FOLDER = "static/"
 
 graph = None
 sess = tf.Session()
@@ -65,25 +66,12 @@ def classify():
         images = np.expand_dims(image, 0)
 
         # Get the predictions (output of the softmax) for this image
-        t = time.time()
         preds = sess.run(output_tensor, {input_tensor : images})
-        dt = time.time() - t
 
-        print("Execution time: %0.2f" % (dt * 1000.))
-
-        # The probabilities should sum to 1
-        assert np.isclose(np.sum(preds[0]), 1)
-
-        sorted_pred_args = preds[0].argsort()[::-1][:10]
-        top10_preds = {taxa[arg]: preds[0][arg] for arg in sorted_pred_args}
-        return render_template(
-            'results.html',
-            name='alex',
-            preds=top10_preds,
-            image_path = file_path
-        )
+        sorted_pred_args = preds[0].argsort()[::-1][:100]
+        return jsonify(dict(zip(TENSORFLOW_TAXON_IDS,[ round(elem * 100, 6) for elem in preds[0].astype(float)])))
     else:
         return render_template('home.html')
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=6006)
+    app.run(host='0.0.0.0', port=6006)
