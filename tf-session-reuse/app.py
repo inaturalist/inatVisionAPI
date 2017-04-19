@@ -19,7 +19,7 @@ def _load_taxon_ids(taxa_file):
         for line in f:
             iter, taxon_id = line.rstrip().split(": ")
             taxon_ids.append(int(taxon_id))
-    return taxa
+    return taxon_ids
 TENSORFLOW_TAXON_IDS = _load_taxon_ids("taxa.txt")
 
 app = Flask(__name__)
