@@ -1,4 +1,0 @@
-taxa_file:  "taxa.txt"
-app_secret:  "somesecret"
-tfserving_host: "localhost"
-tfserving_port: 9000
