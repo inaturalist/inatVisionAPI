@@ -1,6 +1,0 @@
-model_file:  "model/snapshot.caffemodel"
-deploy_file:  "model/deploy.prototxt"
-mean_file:  "model/mean.binaryproto"
-labels_file:  "model/labels.txt"
-upload_folder:  "uploads/"
-app_secret:  "somesecret"

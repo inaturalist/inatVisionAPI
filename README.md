@@ -2,42 +2,43 @@
 
 We're doing some computer vision stuff at iNat.
 
-## tfserving
+#### ubuntu dependencies
 
-### tensorflow serving setup
-- `mkdir ~/tf_imagerec_client`
-- `cd ~/tf_imagerec_client`
-
-#### bazel
-- follow instructions at [https://bazel.build/versions/master/docs/install.html]
+- `apt-get update && apt-get install -y python-virtualenv`
 
 #### python
-- `virtualenv tfserving-venv`
-- `source tfserving-venv/bin/activate`
+
+- `virtualenv inatvision-venv`
+- `source inatvision-venv/bin/activate`
 - `pip install —upgrade pip`
-- `pip install grpcio`
+- `pip install -r requirements.txt`
 
-#### ubuntu dependencies for tfserving
-install some required packages:
-- `apt-get update && apt-get install -y build-essential curl libcurl3-dev git libfreetype6-dev libpng12-dev libzmq3-dev pkg-config python-dev python-numpy python-pip software-properties-common swig zip zlib1g-dev`
+#### install notes
 
-#### install tfserving
-- `git clone --recurse-submodules https://github.com/tensorflow/serving`
-- `cd serving/tensorflow`
-- `./configure`
-- `cd ../..`
-- `bazel build tensorflow_serving/...`
-- get some coffee or lunch. building tensorflow takes a while.
+If the device you're installing on has AVX extensions (check flags in /proc/cpuinfo), try compiling tensorflow for better performance:
+https://www.tensorflow.org/install/install_sources
+This is a good idea on AWS or bare metal, but won't make a difference on Rackspace due to them using an old hypervisor.
+If you're not compiling, install tensorflow from pip: `pip install tensorflow`
 
-#### download the model exports
-- TBD - assume they’re in `/home/inaturalist/model`
+If the device you're installing on has AVX2 or SSE4, install pillow-simd for faster image resizing:
+`pip install pillow-simd` if you only have SSE4, or `CC="cc -mavx2" pip install pillow-simd` if you have AVX2. I saw a significant increase in performance from pillow to pillow-simd with SSE4, less of an increase for AVX2.
+otherwise, install pillow from pip: `pip install pillow`
 
-#### start tfserving rpc server
-- `~~./bazel-bin/tensorflow_serving/model_servers/tensorflow_model_server --port 9000 --model_name 'inception' --model_base_path '/home/inaturalist/model`
+Install other requirements:
+`pip install flask flask_wtf scipy numpy`
 
-### inat node client
-- `cd ~/tf_imagerec_client`
-- `git clone git@github.com:inaturalist/computervision.git`
-- `cd computervision/cv_tfserving_node`
-- `npm install`
-- `n use latest client.js`
+Copy the optimized model into place: `cp /tmp/optimized_model-3.pb tf-session-reuse/`
+
+
+Run the app:
+`python app.py`
+
+
+Some performance data from my 15" MBP, 2.5GHz i7:
+
+| task               | pip tensorflow | compiled tensorflow | compiled tensorflow + pillow-simd |
+| ------------------ | -------------- | ------------------- | --------------------------------- |
+| 100x medium.jpg    | 25 seconds     | 17 seconds          | 15 seconds                        |
+| 100x iphone photos | 81 seconds     | 72 seconds          | 46 seconds                        | 
+
+The larger the images coming into the pipeline, the more important optimized resize (like pillow-simd) is.
