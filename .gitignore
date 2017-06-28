@@ -91,3 +91,6 @@ ENV/
 # we have a node project in here, too
 node_modules
 npm-debug.log
+
+# static is a cache directory
+static/*
