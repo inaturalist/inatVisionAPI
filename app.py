@@ -1,15 +1,18 @@
+import datetime
+import json
+import magic
+import os
 import random
 import time
-import datetime
+import uuid
+import yaml
+import numpy as np
+import tensorflow as tf
 
-import json
 from flask import Flask, request, jsonify, render_template
 from forms import ImageForm
-import numpy as np
+from PIL import Image
 from scipy.misc import imread, imresize
-import tensorflow as tf
-import os
-import yaml
 
 config = yaml.safe_load(open("config.yml"))
 
@@ -46,16 +49,42 @@ input_tensor = input_op.outputs[0]
 output_op = graph.get_operation_by_name('Predictions')
 output_tensor = output_op.outputs[0]
 
+def write_logstash(image_file, image_uuid, file_path, request_start_datetime, request_start_time, mime_type):
+    request_end_time = time.time()
+    request_time = round((request_end_time - request_start_time) * 100, 6)
+    logstash_log = open('log/logstash.log', 'a')
+    log_data = {'@timestamp': request_start_datetime.isoformat(),
+                'uuid': image_uuid,
+                'start_time': request_start_time,
+                'end_time': request_end_time,
+                'duration': request_time,
+                'mime_type': mime_type,
+                'client_ip': request.remote_addr,
+                'filename': image_file.filename,
+                'image_size': os.path.getsize(file_path)}
+    json.dump(log_data, logstash_log)
+    logstash_log.write("\n")
+    logstash_log.close()
+
 @app.route('/', methods=['GET', 'POST'])
 def classify():
     form = ImageForm()
     if request.method == 'POST':
+        request_start_datetime = datetime.datetime.utcnow()
+        request_start_time = time.time()
         image_file = form.image.data
         extension = os.path.splitext(image_file.filename)[1]
-        file_path = os.path.join(UPLOAD_FOLDER, datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S%f')) + extension
+        image_uuid = str(uuid.uuid4())
+        file_path = os.path.join(UPLOAD_FOLDER, image_uuid) + extension
         image_file.save(file_path)
 
-        print(file_path)
+        mime_type = magic.from_file(file_path, mime=True)
+        # attempt to convert non jpegs
+        if mime_type != 'image/jpeg':
+            im = Image.open(file_path)
+            rgb_im = im.convert('RGB')
+            file_path = os.path.join(UPLOAD_FOLDER, image_uuid) + '.jpg'
+            rgb_im.save(file_path)
 
         # Load in an image to classify and preprocess it
         image = imread(file_path)
@@ -69,7 +98,9 @@ def classify():
         preds = sess.run(output_tensor, {input_tensor : images})
 
         sorted_pred_args = preds[0].argsort()[::-1][:100]
-        return jsonify(dict(zip(TENSORFLOW_TAXON_IDS,[ round(elem * 100, 6) for elem in preds[0].astype(float)])))
+        response_json = jsonify(dict(zip(TENSORFLOW_TAXON_IDS,[ round(elem * 100, 6) for elem in preds[0].astype(float)])))
+        write_logstash(image_file, image_uuid, file_path, request_start_datetime, request_start_time, mime_type)
+        return response_json
     else:
         return render_template('home.html')
 
