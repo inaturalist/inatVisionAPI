@@ -55,11 +55,9 @@ def write_logstash(image_file, image_uuid, file_path, request_start_datetime, re
     logstash_log = open('log/logstash.log', 'a')
     log_data = {'@timestamp': request_start_datetime.isoformat(),
                 'uuid': image_uuid,
-                'start_time': request_start_time,
-                'end_time': request_end_time,
                 'duration': request_time,
                 'mime_type': mime_type,
-                'client_ip': request.remote_addr,
+                'client_ip': request.access_route[0],
                 'filename': image_file.filename,
                 'image_size': os.path.getsize(file_path)}
     json.dump(log_data, logstash_log)
@@ -70,7 +68,7 @@ def write_logstash(image_file, image_uuid, file_path, request_start_datetime, re
 def classify():
     form = ImageForm()
     if request.method == 'POST':
-        request_start_datetime = datetime.datetime.utcnow()
+        request_start_datetime = datetime.datetime.now()
         request_start_time = time.time()
         image_file = form.image.data
         extension = os.path.splitext(image_file.filename)[1]
