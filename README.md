@@ -6,14 +6,49 @@ We're doing some computer vision stuff at iNat.
 
 - `apt-get update && apt-get install -y python-virtualenv`
 
+#### os x dependencies
+- `brew install libmagic`
+
 #### python
 
 - `virtualenv inatvision-venv`
 - `source inatvision-venv/bin/activate`
-- `pip install —upgrade pip`
+- `pip install -U pip`
 - `pip install -r requirements.txt`
 
-#### install notes
+#### installation
+
+Here's a rough script for OS X assuming you already have Python and virtualenv installed.
+
+```bash
+# Get dependencies
+brew install libmagic
+
+# Get the repo
+git clone git@github.com:inaturalist/inatVisionAPI.git
+cd inatVisionAPI/
+
+# Set up your python environment
+virtualenv inatvision-venv
+source inatvision-venv/bin/activate
+pip install -U pip
+pip install -r requirements.txt
+
+# Get your model and taxon ID files and copy them into place. Note the file names are important.
+cp /path/to/optimized_model-3.pb .
+cp /path/to/taxa.txt .
+
+# Copy your config file (and edit, of course)
+cp config.yml.example config.yml
+
+# Run the app
+python app.py
+
+```
+
+Now you should be able to test at http://localhost:6006 via the browser.
+
+##### Notes
 
 If the device you're installing on has AVX extensions (check flags in /proc/cpuinfo), try compiling tensorflow for better performance:
 https://www.tensorflow.org/install/install_sources
@@ -24,15 +59,7 @@ If the device you're installing on has AVX2 or SSE4, install pillow-simd for fas
 `pip install pillow-simd` if you only have SSE4, or `CC="cc -mavx2" pip install pillow-simd` if you have AVX2. I saw a significant increase in performance from pillow to pillow-simd with SSE4, less of an increase for AVX2.
 otherwise, install pillow from pip: `pip install pillow`
 
-Install other requirements:
-`pip install flask flask_wtf scipy numpy`
-
-Copy the optimized model into place: `cp /tmp/optimized_model-3.pb tf-session-reuse/`
-
-
-Run the app:
-`python app.py`
-
+tensorflow seems to want to compile against your system copy of numpy regardless of the virtualenv, so if you see stupid errors like `ImportError: numpy.core.multiarray failed to import`, try running `deactivate` to get out the virtualenv, then `pip install -U numpy` or somesuch to update your system copy of numpy. Then `source inatvision-venv/bin/activate` to get back in your virtualend and try again.
 
 Some performance data from my 15" MBP, 2.5GHz i7:
 
