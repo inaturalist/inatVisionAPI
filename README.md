@@ -18,7 +18,7 @@ We're doing some computer vision stuff at iNat.
 
 #### installation
 
-Here's a rough script for OS X assuming you already have Python and virtualenv installed.
+Here's a rough script for OS X assuming you already have homebrew, Python, and virtualenv installed.
 
 ```bash
 # Get dependencies
@@ -59,9 +59,9 @@ If the device you're installing on has AVX2 or SSE4, install pillow-simd for fas
 `pip install pillow-simd` if you only have SSE4, or `CC="cc -mavx2" pip install pillow-simd` if you have AVX2. I saw a significant increase in performance from pillow to pillow-simd with SSE4, less of an increase for AVX2.
 otherwise, install pillow from pip: `pip install pillow`
 
-tensorflow seems to want to compile against your system copy of numpy regardless of the virtualenv, so if you see stupid errors like `ImportError: numpy.core.multiarray failed to import`, try running `deactivate` to get out the virtualenv, then `pip install -U numpy` or somesuch to update your system copy of numpy. Then `source inatvision-venv/bin/activate` to get back in your virtualend and try again.
+tensorflow seems to want to compile against your system copy of numpy on OS X regardless of the virtualenv, so if you see stupid errors like `ImportError: numpy.core.multiarray failed to import`, try running `deactivate` to get out the virtualenv, then `pip install -U numpy` or somesuch to update your system copy of numpy. Then `source inatvision-venv/bin/activate` to get back in your virtualend and try again.
 
-Some performance data from my 15" MBP, 2.5GHz i7:
+Some performance data from a 15" MBP, 2.5GHz i7:
 
 | task               | pip tensorflow | compiled tensorflow | compiled tensorflow + pillow-simd |
 | ------------------ | -------------- | ------------------- | --------------------------------- |
