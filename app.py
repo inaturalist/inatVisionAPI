@@ -51,7 +51,7 @@ output_tensor = output_op.outputs[0]
 
 def write_logstash(image_file, image_uuid, file_path, request_start_datetime, request_start_time, mime_type):
     request_end_time = time.time()
-    request_time = round((request_end_time - request_start_time) * 100, 6)
+    request_time = round((request_end_time - request_start_time) * 1000, 6)
     logstash_log = open('log/logstash.log', 'a')
     log_data = {'@timestamp': request_start_datetime.isoformat(),
                 'uuid': image_uuid,
@@ -96,7 +96,7 @@ def classify():
         preds = sess.run(output_tensor, {input_tensor : images})
 
         sorted_pred_args = preds[0].argsort()[::-1][:100]
-        response_json = jsonify(dict(zip(TENSORFLOW_TAXON_IDS,[ round(elem * 100, 6) for elem in preds[0].astype(float)])))
+        response_json = jsonify(dict({TENSORFLOW_TAXON_IDS[arg]: round(preds[0][arg] * 100, 6) for arg in sorted_pred_args}))
         write_logstash(image_file, image_uuid, file_path, request_start_datetime, request_start_time, mime_type)
         return response_json
     else:
