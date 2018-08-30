@@ -85,7 +85,11 @@ def classify():
             rgb_im.save(file_path)
 
         # Load in an image to classify and preprocess it
-        image = imread(file_path)
+        # Note that we are using imread to convert to RGB in case the image was
+        # in grayscale or something: https://docs.scipy.org/doc/scipy/reference/generated/scipy.misc.imread.html
+        # Also note that imread is deprecated and we should probably switch to
+        # imageio, and/or use PIL to perform this RGB conversion ourselves
+        image = imread(file_path, False, 'RGB')
         image = imresize(image, [299, 299])
         image = image.astype(np.float32)
         image = (image - 128.) / 128.
