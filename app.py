@@ -1,5 +1,6 @@
 import datetime
 import json
+import csv
 import magic
 import os
 import random
@@ -23,7 +24,7 @@ def _load_taxon_ids(taxa_file):
             iter, taxon_id = line.rstrip().split(": ")
             taxon_ids.append(int(taxon_id))
     return taxon_ids
-TENSORFLOW_TAXON_IDS = _load_taxon_ids("taxa.txt")
+TENSORFLOW_TAXON_IDS = _load_taxon_ids( config["taxa_path"] )
 
 app = Flask(__name__)
 app.secret_key = config["app_secret"]
@@ -35,7 +36,7 @@ sess = tf.Session()
 with sess.as_default():
     # Load in the graph
     graph_def = tf.GraphDef()
-    with open('optimized_model-3.pb', 'rb') as f:
+    with open( config["model_path"], 'rb') as f:
         graph_def.ParseFromString(f.read())
     sess.graph.as_default()
     tf.import_graph_def(graph_def, name='')
@@ -46,7 +47,7 @@ sess.graph.finalize()
 # Get the input and output operations
 input_op = graph.get_operation_by_name('images')
 input_tensor = input_op.outputs[0]
-output_op = graph.get_operation_by_name('Predictions')
+output_op = graph.get_operation_by_name('Predictions_task_0')
 output_tensor = output_op.outputs[0]
 
 def write_logstash(image_file, image_uuid, file_path, request_start_datetime, request_start_time, mime_type):
@@ -88,12 +89,11 @@ def classify():
         # Note that we are using imread to convert to RGB in case the image was
         # in grayscale or something: https://docs.scipy.org/doc/scipy/reference/generated/scipy.misc.imread.html
         # Also note that imread is deprecated and we should probably switch to
-        # imageio, and/or use PIL to perform this RGB conversion ourselves
-        image = imread(file_path, False, 'RGB')
-        image = imresize(image, [299, 299])
-        image = image.astype(np.float32)
-        image = (image - 128.) / 128.
-        image = image.ravel()
+        image_fp = file_path
+        image = imread( image_fp, False, 'RGB' )
+        image = imresize( image, [299, 299] )
+        image = image.astype( np.float32 )
+        image = ( (image / 255. )  - 0.5 ) * 2.
         images = np.expand_dims(image, 0)
 
         # Get the predictions (output of the softmax) for this image
