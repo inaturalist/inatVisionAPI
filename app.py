@@ -30,24 +30,8 @@ app.secret_key = config["app_secret"]
 
 UPLOAD_FOLDER = "static/"
 
-graph = None
-sess = tf.Session()
-with sess.as_default():
-    # Load in the graph
-    graph_def = tf.GraphDef()
-    with open('optimized_model-3.pb', 'rb') as f:
-        graph_def.ParseFromString(f.read())
-    sess.graph.as_default()
-    tf.import_graph_def(graph_def, name='')
-    graph = sess.graph
-
-sess.graph.finalize()
-
-# Get the input and output operations
-input_op = graph.get_operation_by_name('images')
-input_tensor = input_op.outputs[0]
-output_op = graph.get_operation_by_name('Predictions')
-output_tensor = output_op.outputs[0]
+tf.config.set_visible_devices([], "GPU")
+model = tf.keras.models.load_model("optimized_model2.h5")
 
 def write_logstash(image_file, image_uuid, file_path, request_start_datetime, request_start_time, mime_type):
     request_end_time = time.time()
@@ -84,21 +68,14 @@ def classify():
             file_path = os.path.join(UPLOAD_FOLDER, image_uuid) + '.jpg'
             rgb_im.save(file_path)
 
-        # Load in an image to classify and preprocess it
-        # Note that we are using imread to convert to RGB in case the image was
-        # in grayscale or something: https://docs.scipy.org/doc/scipy/reference/generated/scipy.misc.imread.html
-        # Also note that imread is deprecated and we should probably switch to
-        # imageio, and/or use PIL to perform this RGB conversion ourselves
-        image = imread(file_path, False, 'RGB')
-        image = imresize(image, [299, 299])
-        image = image.astype(np.float32)
-        image = (image - 128.) / 128.
-        image = image.ravel()
-        images = np.expand_dims(image, 0)
+        img = tf.keras.preprocessing.image.load_img(file_path, target_size=(299,299))
+        img_array = tf.keras.preprocessing.image.img_to_array(img)
+        img_array = img_array / 255
+        img_array = tf.expand_dims(img_array, 0)
+        img_array = tf.cast(img_array, tf.float16)
 
-        # Get the predictions (output of the softmax) for this image
-        preds = sess.run(output_tensor, {input_tensor : images})
-
+        preds = model.predict(img_array)
+        
         sorted_pred_args = preds[0].argsort()[::-1][:100]
         response_json = jsonify(dict({TENSORFLOW_TAXON_IDS[arg]: round(preds[0][arg] * 100, 6) for arg in sorted_pred_args}))
         write_logstash(image_file, image_uuid, file_path, request_start_datetime, request_start_time, mime_type)
