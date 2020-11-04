@@ -31,7 +31,7 @@ app.secret_key = config["app_secret"]
 UPLOAD_FOLDER = "static/"
 
 tf.config.set_visible_devices([], "GPU")
-model = tf.keras.models.load_model("optimized_model2.h5")
+model = tf.keras.models.load_model("optimized_model2.h5", compile=False)
 
 def write_logstash(image_file, image_uuid, file_path, request_start_datetime, request_start_time, mime_type):
     request_end_time = time.time()
