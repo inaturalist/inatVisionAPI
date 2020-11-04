@@ -12,7 +12,6 @@ import tensorflow as tf
 from flask import Flask, request, jsonify, render_template
 from forms import ImageForm
 from PIL import Image
-from scipy.misc import imread, imresize
 
 config = yaml.safe_load(open("config.yml"))
 
