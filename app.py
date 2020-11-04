@@ -67,11 +67,12 @@ def classify():
             file_path = os.path.join(UPLOAD_FOLDER, image_uuid) + '.jpg'
             rgb_im.save(file_path)
 
-        img = tf.keras.preprocessing.image.load_img(file_path, target_size=(299,299))
-        img_array = tf.keras.preprocessing.image.img_to_array(img)
-        img_array = img_array / 255
-        img_array = tf.expand_dims(img_array, 0)
-        img_array = tf.cast(img_array, tf.float16)
+        img = tf.io.read_file(file_path)
+        img = tf.image.decode_jpeg(img, channels=3)
+        img = tf.image.convert_image_dtype(img, tf.float32)
+        img = tf.image.central_crop(img, 0.875)
+        img = tf.image.resize(img, [299,299])
+        img = tf.expand_dims(img,  0)
 
         preds = model.predict(img_array)
         
