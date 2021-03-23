@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+        <meta charset="UTF-8">
+        <title>Heatmap Image</title>
+</head>
+<body>
+        <form action="/grad-cam" method="POST" enctype="multipart/form-data">
+        <input type="file" name="image" accept="image/*">
+        <br />
+        <label for="target_taxon">Target taxon id:</label>
+        <input type="text" id="target_taxon" name="target_taxon"><br><br>
+        <button type="submit">Submit</button>
+        </form>
+</body>
+</html>
