@@ -22,7 +22,7 @@ def _load_taxon_ids(taxa_file):
             iter, taxon_id = line.rstrip().split(": ")
             taxon_ids.append(int(taxon_id))
     return taxon_ids
-TENSORFLOW_TAXON_IDS = _load_taxon_ids("taxa.txt")
+TENSORFLOW_TAXON_IDS = _load_taxon_ids( config["taxa_path"] )
 
 app = Flask(__name__)
 app.secret_key = config["app_secret"]
@@ -30,7 +30,7 @@ app.secret_key = config["app_secret"]
 UPLOAD_FOLDER = "static/"
 
 tf.config.set_visible_devices([], "GPU")
-model = tf.keras.models.load_model("optimized_model2.h5", compile=False)
+model = tf.keras.models.load_model( config["model_path"], compile=False)
 
 def write_logstash(image_file, image_uuid, file_path, request_start_datetime, request_start_time, mime_type):
     request_end_time = time.time()
@@ -74,7 +74,7 @@ def classify():
         img = tf.image.resize(img, [299,299])
         img = tf.expand_dims(img,  0)
 
-        preds = model.predict(img_array)
+        preds = model.predict(img)
         
         sorted_pred_args = preds[0].argsort()[::-1][:100]
         response_json = jsonify(dict({TENSORFLOW_TAXON_IDS[arg]: round(preds[0][arg] * 100, 6) for arg in sorted_pred_args}))
