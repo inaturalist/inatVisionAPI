@@ -71,7 +71,7 @@ def classify():
         img = tf.image.decode_jpeg(img, channels=3)
         img = tf.image.convert_image_dtype(img, tf.float32)
         img = tf.image.central_crop(img, 0.875)
-        img = tf.image.resize(img, [299,299])
+        img = tf.image.resize(img, [299,299], tf.image.ResizeMethod.NEAREST_NEIGHBOR)
         img = tf.expand_dims(img,  0)
 
         preds = model.predict(img)
