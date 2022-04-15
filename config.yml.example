@@ -1,3 +1,4 @@
-app_secret:  "somesecret"
-model_path: "optimized_model.pb"
-taxa_path: "taxa.txt"
+app_secret: "somesecret"
+vision_model_path: "models/.../model.h5"
+taxonomy_path: "models/.../taxonomy.csv"
+geo_model_path: "models/.../model.pth.tar"
