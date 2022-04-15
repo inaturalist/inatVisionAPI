@@ -5,7 +5,7 @@ import uuid
 import json
 
 from flask import Flask, request, render_template
-from forms import ImageForm
+from web_forms import ImageForm
 from inat_inferrer import InatInferrer
 from model_results import ModelResults
 
