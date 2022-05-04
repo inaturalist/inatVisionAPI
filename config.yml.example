@@ -2,3 +2,5 @@ app_secret: "somesecret"
 vision_model_path: "models/.../model.h5"
 taxonomy_path: "models/.../taxonomy.csv"
 geo_model_path: "models/.../model.pth.tar"
+tf_geo_model_path: "models/.../tf_gpmodel.h5"
+use_tf_gp_model: False

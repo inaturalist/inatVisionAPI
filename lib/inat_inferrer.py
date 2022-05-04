@@ -3,6 +3,7 @@ import magic
 import tensorflow as tf
 from PIL import Image
 from lib.geo_prior_model import GeoPriorModel
+from lib.tf_gp_model import TFGeoPriorModel
 from lib.vision_inferrer import VisionInferrer
 from lib.model_taxonomy import ModelTaxonomy
 
@@ -21,7 +22,10 @@ class InatInferrer:
         self.vision_inferrer = VisionInferrer(config["vision_model_path"], self.taxonomy)
 
     def setup_geo_model(self, config):
-        self.geo_model = GeoPriorModel(config["geo_model_path"], self.taxonomy)
+        if config["use_tf_gp_model"]:
+            self.geo_model = TFGeoPriorModel(config["tf_geo_model_path"], self.taxonomy)
+        else:
+            self.geo_model = GeoPriorModel(config["geo_model_path"], self.taxonomy)
 
     def prepare_image_for_inference(self, file_path, image_uuid):
         mime_type = magic.from_file(file_path, mime=True)
