@@ -51,6 +51,8 @@ class GeoPriorModel:
             # map the geo model index to a taxon_id
             taxon_id = self.params["class_to_taxa"][index]
             if filter_taxon is not None:
+                if taxon_id not in self.taxonomy.taxa:
+                    continue
                 taxon = self.taxonomy.taxa[taxon_id]
                 # the predicted taxon is not the filter_taxon or a descendant, so skip it
                 if not taxon.is_or_descendant_of(filter_taxon):

@@ -3,6 +3,7 @@ import os
 import urllib
 import hashlib
 import magic
+import time
 import tensorflow as tf
 from PIL import Image
 from lib.test_observation import TestObservation  # noqa: E402
@@ -14,21 +15,33 @@ class VisionTesting:
 
     def __init__(self, config, **args):
         self.cmd_args = args
-        self.inferrer = InatInferrer(config)
+        self.inferrers = {}
+        self.scores = {}
+        for score_type in ["matching_indices", "top1_distance_scores",
+                           "top5_distance_scores", "top10_distance_scores"]:
+            self.scores[score_type] = {
+                "vision": {},
+                "combined": {},
+                "recursive": {}
+            }
+        for index, model_config in enumerate(config["models"]):
+            model_name = model_config["name"] if "name" in model_config else f'Model {index}'
+            model_config["name"] = model_name
+            for score_type in ["matching_indices", "top1_distance_scores",
+                               "top5_distance_scores", "top10_distance_scores"]:
+                self.scores[score_type]["vision"][index] = []
+                self.scores[score_type]["combined"][index] = []
+                self.scores[score_type]["recursive"][index] = []
+
+            self.inferrers[index] = InatInferrer(model_config)
+        # self.inferrers = list(map(lambda x: InatInferrer(x), config["models"]))
         self.upload_folder = "static/"
-        for scores in ["matching_indices", "top1_distance_scores",
-                       "top5_distance_scores", "top10_distance_scores"]:
-            setattr(self, scores, {
-                "vision": [],
-                "combined": []
-            })
-        self.run()
-        self.print_scores()
 
     def run(self):
         count = 0
         limit = self.cmd_args["limit"] or 100
         target_observation_id = self.cmd_args["observation_id"]
+        start_time = time.time()
         try:
             with open(self.cmd_args["path"], "r") as csv_file:
                 csv_reader = csv.DictReader(csv_file, delimiter=",")
@@ -42,18 +55,23 @@ class VisionTesting:
                             return
                         else:
                             continue
-                    completed = self.test_observation(observation)
-                    if completed is False:
+                    inferrer_results = self.test_observation(observation)
+                    if results is False:
                         # there was some problem processing this test observation. Continue but
                         # don't increment the counter so the requested number of observations
                         # will still be tested
                         continue
                     count += 1
+                    self.append_to_aggregate_results(observation, inferrer_results)
+                    if count % 10 == 0:
+                        total_time = round(time.time() - start_time, 3)
+                        remaining_time = round((limit - count) / (count / total_time), 3)
+                        print(f'Processed {count} in {total_time} sec\testimated {remaining_time} sec remaining')
                     if count >= limit:
                         return
         except IOError as e:
             print(e)
-            print("Cannot open mapping file")
+            print("Testing run failed")
 
     # given an x, return the number of scores less than x. Otherwise return the number
     # of scores that are empty or greather than or equal to 100 (essentially the fails)
@@ -75,34 +93,37 @@ class VisionTesting:
         return top_x
 
     def print_scores(self):
-        all_metrics = {}
-        for method in ["vision", "combined"]:
-            scores = self.matching_indices[method]
-            top1_distance_scores = self.top1_distance_scores[method]
-            top5_distance_scores = self.top5_distance_scores[method]
-            top10_distance_scores = self.top10_distance_scores[method]
-            metrics = {}
-            metrics["count"] = len(scores)
-            metrics["top1"] = self.top_x(1, scores)
-            metrics["top5"] = self.top_x(5, scores)
-            metrics["top10"] = self.top_x(10, scores)
-            metrics["top100"] = self.top_x(None, scores)
-            metrics["top1%"] = self.top_x_percent(1, scores)
-            metrics["top5%"] = self.top_x_percent(5, scores)
-            metrics["top10%"] = self.top_x_percent(10, scores)
-            metrics["noMatch"] = self.top_x_percent(None, scores)
-            metrics["top1∆"] = round(
-                (sum(top1_distance_scores) / metrics["count"]) * 100, 2)
-            metrics["top5∆"] = round(
-                (sum(top5_distance_scores) / metrics["count"]) * 100, 2)
-            metrics["top10∆"] = round(
-                (sum(top10_distance_scores) / metrics["count"]) * 100, 2)
-            all_metrics[method] = metrics
+        for index, inferrer in self.inferrers.items():
+            print(inferrer.config["name"])
+            all_metrics = {}
+            for method in ["vision", "combined", "recursive"]:
+                scores = self.scores["matching_indices"][method][index]
+                top1_distance_scores = self.scores["top1_distance_scores"][method][index]
+                top5_distance_scores = self.scores["top5_distance_scores"][method][index]
+                top10_distance_scores = self.scores["top10_distance_scores"][method][index]
+                metrics = {}
+                metrics["count"] = len(scores)
+                metrics["top1"] = self.top_x(1, scores)
+                metrics["top5"] = self.top_x(5, scores)
+                metrics["top10"] = self.top_x(10, scores)
+                metrics["notIn"] = self.top_x(None, scores)
+                metrics["top1%"] = self.top_x_percent(1, scores)
+                metrics["top5%"] = self.top_x_percent(5, scores)
+                metrics["top10%"] = self.top_x_percent(10, scores)
+                metrics["notIn%"] = self.top_x_percent(None, scores)
+                metrics["top1∆"] = round(
+                    (sum(top1_distance_scores) / metrics["count"]) * 100, 2)
+                metrics["top5∆"] = round(
+                    (sum(top5_distance_scores) / metrics["count"]) * 100, 2)
+                metrics["top10∆"] = round(
+                    (sum(top10_distance_scores) / metrics["count"]) * 100, 2)
+                all_metrics[method] = metrics
 
-        print("method  " + "\t" + "\t".join(all_metrics["vision"].keys()))
-        for method in ["vision", "combined"]:
-            print(f"{method.ljust(10)}\t" + "\t".join(
-                str(value) for value in all_metrics[method].values()))
+            print("method  " + "\t" + "\t".join(all_metrics["vision"].keys()))
+            for method in ["vision", "combined", "recursive"]:
+                print(f"{method.ljust(10)}\t" + "\t".join(
+                    str(value) for value in all_metrics[method].values()))
+            print("\n")
 
     # NOTE: this is assuming no conversion is needed.
     # Ideally we'd reuse the inat_inferrer prepare_image_for_inference
@@ -154,45 +175,70 @@ class VisionTesting:
         else:
             iconic_taxon_id = int(observation.iconic_taxon_id)
         # calculate vision scores
-        vision_results = self.inferrer.vision_inferrer.process_image(
-            image, iconic_taxon_id, cache_path)
-        # calculate geo scores
-        geo_results = self.inferrer.geo_model.predict(
-            observation.lat, observation.lng, iconic_taxon_id)
-        # prepare and run combined scoring
-        results = ModelResults(vision_results, geo_results, self.inferrer.taxonomy)
-        results.aggregate_scores()
-        if self.cmd_args["print_tree"]:
-            print(f'\nResults of Observation: {observation.observation_id}')
-            results.print()
-        # only look at the top 100 results for this testing
-        top100_vision = self.top_x_results(vision_results, 100)
-        top100_combined = self.top_x_results(results.scores["combined"], 100)
-        vision_index, vision_taxon_distance_scores = self.assess_top_results(
-            observation, top100_vision)
-        combined_index, combined_taxon_distance_scores = self.assess_top_results(
-            observation, top100_combined)
-        self.matching_indices["vision"].append(vision_index)
-        self.matching_indices["combined"].append(combined_index)
-        # top1 distance score is just the taxon_distance_score if the first result
-        self.top1_distance_scores["vision"].append(vision_taxon_distance_scores[0])
-        self.top1_distance_scores["combined"].append(combined_taxon_distance_scores[0])
-        # for taxon_distance, top n is the max score of the top n results, or the
-        # taxon_distance_score of the most closely related taxon in the first n results
-        self.top5_distance_scores["vision"].append(max(vision_taxon_distance_scores[0:5]))
-        self.top5_distance_scores["combined"].append(max(combined_taxon_distance_scores[0:5]))
-        self.top10_distance_scores["vision"].append(max(vision_taxon_distance_scores[0:10]))
-        self.top10_distance_scores["combined"].append(max(combined_taxon_distance_scores[0:10]))
-        self.debug([
-            observation.observation_id,
-            vision_index,
-            combined_index,
-            self.top1_distance_scores["vision"][-1],
-            self.top1_distance_scores["combined"][-1],
-            self.top5_distance_scores["vision"][-1],
-            self.top5_distance_scores["combined"][-1]
-        ])
-        return True
+        inferrer_results = {}
+        for index, inferrer in self.inferrers.items():
+            vision_results = inferrer.vision_inferrer.process_image(
+                image, iconic_taxon_id, None)
+            # calculate geo scores
+            if inferrer.geo_model and self.cmd_args["geo"]:
+                geo_results = inferrer.geo_model.predict(
+                    observation.lat, observation.lng, iconic_taxon_id)
+            else:
+                geo_results = []
+            # prepare and run combined scoring
+            inferrer_results[index] = ModelResults(
+                vision_results, geo_results, inferrer.taxonomy)
+        return inferrer_results
+
+    def append_to_aggregate_results(self, observation, inferrer_results):
+        vision_indices = set()
+        for index, results in inferrer_results.items():
+            if self.cmd_args["print_tree"]:
+                print(f'\nResults of Observation: {observation.observation_id}')
+                results.print()
+
+            # only look at the top 100 results for this testing
+            top100_vision = self.top_x_results(results.vision_results, 100)
+            top100_combined = self.top_x_results(results.scores["combined"], 100)
+            top100_recursive = self.top_x_results(results.scores["recursive"], 100)
+            vision_index, vision_taxon_distance_scores = self.assess_top_results(
+                observation, top100_vision)
+            combined_index, combined_taxon_distance_scores = self.assess_top_results(
+                observation, top100_combined)
+            recursive_index, recursive_taxon_distance_scores = self.assess_top_results(
+                observation, top100_recursive)
+            vision_indices.add(vision_index)
+            self.scores["matching_indices"]["vision"][index].append(vision_index)
+            self.scores["matching_indices"]["combined"][index].append(combined_index)
+            self.scores["matching_indices"]["recursive"][index].append(recursive_index)
+            # top1 distance score is just the taxon_distance_score if the first result
+            self.scores["top1_distance_scores"]["vision"][index].append(
+                vision_taxon_distance_scores[0])
+            self.scores["top1_distance_scores"]["combined"][index].append(
+                combined_taxon_distance_scores[0])
+            self.scores["top1_distance_scores"]["recursive"][index].append(
+                recursive_taxon_distance_scores[0])
+            # # for taxon_distance, top n is the max score of the top n results, or the
+            # # taxon_distance_score of the most closely related taxon in the first n results
+            self.scores["top5_distance_scores"]["vision"][index].append(
+                max(vision_taxon_distance_scores[0:5]))
+            self.scores["top5_distance_scores"]["combined"][index].append(
+                max(combined_taxon_distance_scores[0:5]))
+            self.scores["top5_distance_scores"]["recursive"][index].append(
+                max(recursive_taxon_distance_scores[0:5]))
+            self.scores["top10_distance_scores"]["vision"][index].append(
+                max(vision_taxon_distance_scores[0:10]))
+            self.scores["top10_distance_scores"]["combined"][index].append(
+                max(combined_taxon_distance_scores[0:10]))
+            self.scores["top10_distance_scores"]["recursive"][index].append(
+                max(recursive_taxon_distance_scores[0:10]))
+        # if len(vision_indices) > 1:
+        #     print(vision_indices)
+        #     print(f'\nResults of Observation: {observation.observation_id}')
+        #     for index, results in inferrer_results.items():
+        #         print(self.inferrers[index].config["name"])
+        #         results.print()
+        #     print("===================================================\n")
 
     def download_photo(self, photo_url):
         checksum = hashlib.md5(photo_url.encode()).hexdigest()

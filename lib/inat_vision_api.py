@@ -7,7 +7,7 @@ import json
 from flask import Flask, request, render_template
 from web_forms import ImageForm
 from inat_inferrer import InatInferrer
-from model_results import ModelResults
+from model_scoring import ModelScoring
 
 
 class InatVisionAPI:
@@ -23,27 +23,16 @@ class InatVisionAPI:
     def setup_inferrer(self, config):
         self.inferrer = InatInferrer(config)
 
-    def top_x_results(self, results, x):
-        top_x = dict(sorted(
-            results.scores["combined"].items(), key=lambda x: x[1], reverse=True)[:x])
-        to_return = []
-        for index, arg in enumerate(top_x):
-            to_return.append({
-                "combined_score": round(results.scores["combined"][arg] * 100, 6),
-                "vision_score": round(results.scores["vision"][arg] * 100, 6),
-                "geo_score": round(results.scores["geo"][arg] * 100, 6),
-                "id": self.inferrer.taxonomy.taxa[arg].id,
-                "name": self.inferrer.taxonomy.taxa[arg].name,
-                "index": index
-            })
-        return to_return
-
     def index_route(self):
         form = ImageForm()
         if "observation_id" in request.args:
             observation_id = request.args["observation_id"]
         else:
             observation_id = form.observation_id.data
+        if "geomodel" in request.args:
+            geomodel = request.args["geomodel"]
+        else:
+            geomodel = form.geomodel.data
         if request.method == "POST" or observation_id:
             lat = form.lat.data
             lng = form.lng.data
@@ -61,44 +50,62 @@ class InatVisionAPI:
                 return render_template("home.html")
 
             image = self.inferrer.prepare_image_for_inference(file_path, image_uuid)
-
-            # Vision
-            vision_start_time = time.time()
-            vision_results = self.inferrer.vision_inferrer.process_image(image, iconic_taxon_id)
-            vision_total_time = time.time() - vision_start_time
-            print("Vision Time: %0.2fms" % (vision_total_time * 1000.))
-
-            # Geo
-            geo_start_time = time.time()
-            if lat is not None and lat != "" and lng is not None and lng != "":
-                geo_results = self.inferrer.geo_model.predict(lat, lng, iconic_taxon_id)
-            else:
-                geo_results = {}
-            geo_total_time = time.time() - geo_start_time
-            print("GeoTime: %0.2fms" % (geo_total_time * 1000.))
-
-            # Scoring
-            scoring_start_time = time.time()
-            results = ModelResults(vision_results, geo_results, self.inferrer.taxonomy)
-            results.aggregate_scores()
-            scoring_total_time = time.time() - scoring_start_time
-            print("Score Time: %0.2fms" % (scoring_total_time * 1000.))
-
-            results.print()
-            return {
-                "common_ancestor": None if results.fine_common_ancestor is None else {
-                    "id": results.fine_common_ancestor.id,
-                    "name": results.fine_common_ancestor.name
-                },
-                "rough_common_ancestor": None if results.common_ancestor is None else {
-                    "id": results.common_ancestor.id,
-                    "name": results.common_ancestor.name
-                },
-                "top_combined": self.top_x_results(results, 20)
-            }
-
+            return self.score_image(image, lat, lng, iconic_taxon_id, geomodel)
         else:
             return render_template("home.html")
+
+    def score_image(self, image, lat, lng, iconic_taxon_id, geomodel):
+        # Vision
+        vision_start_time = time.time()
+        vision_scores = self.inferrer.vision_inferrer.process_image(image, iconic_taxon_id)
+        vision_total_time = time.time() - vision_start_time
+        print("Vision Time: %0.2fms" % (vision_total_time * 1000.))
+
+        if geomodel != "true":
+            top_x = dict(sorted(
+                vision_scores.items(), key=lambda x: x[1], reverse=True)[:100])
+            to_return = {}
+            for index, arg in enumerate(top_x):
+                to_return[arg] = round(vision_scores[arg] * 100, 6)
+            return to_return
+
+        # Geo
+        geo_start_time = time.time()
+        if lat is not None and lat != "" and lng is not None and lng != "":
+            geo_scores = self.inferrer.geo_model.predict(lat, lng, iconic_taxon_id)
+        else:
+            geo_scores = {}
+        geo_total_time = time.time() - geo_start_time
+        print("GeoTime: %0.2fms" % (geo_total_time * 1000.))
+
+        # Scoring
+        scoring_start_time = time.time()
+        combined_scores = ModelScoring.combine_vision_and_geo_scores(vision_scores, geo_scores)
+
+        # results.aggregate_scores()
+        scoring_total_time = time.time() - scoring_start_time
+        print("Score Time: %0.2fms" % (scoring_total_time * 1000.))
+
+        top_x = dict(sorted(
+            combined_scores.items(), key=lambda x: x[1], reverse=True)[:100])
+        to_return = []
+        for index, arg in enumerate(top_x):
+            geo_score = geo_scores[arg] if arg in geo_scores else 0.0000000001
+            to_return.append({
+                "combined_score": round(combined_scores[arg] * 100, 6),
+                "vision_score": round(vision_scores[arg] * 100, 6),
+                "geo_score": round(geo_score * 100, 6),
+                "id": self.inferrer.taxonomy.taxa[arg].id,
+                "name": self.inferrer.taxonomy.taxa[arg].name
+            })
+
+        total_time = time.time() - vision_start_time
+        print("Total: %0.2fms" % (total_time * 1000.))
+        return to_return
+
+        total_time = time.time() - vision_start_time
+        print("Total: %0.2fms" % (total_time * 1000.))
+        return to_return
 
     def process_upload(self, form_image_data, image_uuid):
         if form_image_data is None:

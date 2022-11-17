@@ -10,4 +10,5 @@ class ImageForm(FlaskForm):
     ])
     lat = StringField("lat")
     lng = StringField("lng")
+    geomodel = StringField("geomodel")
     format = StringField("format")

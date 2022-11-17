@@ -19,10 +19,20 @@ class ModelResults:
         # combined_agg scores are the unnormalized sum of combined scores the descendants of a taxon
         self.scores = {
             "vision": {},
+            "vision_agg": {},
             "geo": {},
             "combined": {},
-            "combined_agg": {}
+            "combined_agg": {},
+            "recursive": {}
         }
+
+        self.aggregate_scores()
+        recursive_results = self.recursive_results()
+        self.scores["recursive"] = {}
+        top_x = sorted(
+            recursive_results, key=lambda x: self.scores["combined_agg"][x], reverse=True)[:100]
+        for index, arg in enumerate(top_x):
+            self.scores["recursive"][arg] = self.scores["combined_agg"][arg]
 
     def aggregate_scores(self):
         self.ancestor_scores = {}
@@ -118,11 +128,14 @@ class ModelResults:
                     child_vision_score = self.vision_results[child_id]
                 else:
                     child_vision_score = 0.00000001
-                if child_id in self.geo_results:
+                if len(self.geo_results) == 0:
+                    child_geo_score = 1
+                elif child_id in self.geo_results:
                     child_geo_score = self.geo_results[child_id]
                 else:
                     child_geo_score = 0.00000001
                 self.scores["vision"][child_id] = child_vision_score
+                self.scores["vision_agg"][child_id] = child_vision_score
                 self.scores["geo"][child_id] = child_geo_score
                 # simple muliplication of vision and geo score to get a combined score
                 self.scores["combined"][child_id] = child_vision_score * child_geo_score
@@ -130,7 +143,7 @@ class ModelResults:
                 # the aggregate branch score is equal to the combined score
                 self.scores["combined_agg"][child_id] = self.scores["combined"][child_id]
 
-            child_vision_score = self.scores["vision"][child_id]
+            child_vision_score = self.scores["vision_agg"][child_id]
             child_geo_score = self.scores["geo"][child_id]
             child_combined_agg_score = self.scores["combined_agg"][child_id]
 
@@ -147,9 +160,34 @@ class ModelResults:
                 geo_score = child_geo_score
         # scores have been calculated and summed for all this taxon's descendants,
         # so reccord the final scores for this branch
-        self.scores["vision"][taxon_id] = vision_score
+        self.scores["vision_agg"][taxon_id] = vision_score
         self.scores["geo"][taxon_id] = geo_score
         self.scores["combined_agg"][taxon_id] = combined_agg_score
+
+    def recursive_results(self, taxon_id=0):
+        children = self.taxonomy.taxon_children[taxon_id]
+        # 0 represents the root taxon, so the combined aggretate score for 0
+        # represents the sum of all combined scores of all leaves
+        sum_of_all_combined_scores = self.scores["combined_agg"][0]
+        # ignore children whose combined score ratio is less than 0.01
+        scored_children = list(filter(lambda x: x in self.scores["combined_agg"] and (
+            (self.scores["combined_agg"][x] / sum_of_all_combined_scores) >= 0.0001), children))
+        if not scored_children:
+            return [taxon_id]
+        # sort children by score from most- to least-likely
+        scored_children = sorted(scored_children, key=lambda x: self.scores["combined_agg"][x],
+                                 reverse=True)
+
+        results = []
+        for child_id in scored_children:
+            # recursively repeat for descendants
+            if child_id in self.taxonomy.taxon_children:
+                child_results = self.recursive_results(child_id)
+                if child_results:
+                    results = results + child_results
+            else:
+                results.append(child_id)
+        return results
 
     # prints to the console a tree prepresenting the most likely taxa and their
     # aggregate combined score ratio. e.g. if all combined scores add up to 0.5
@@ -161,7 +199,7 @@ class ModelResults:
         sum_of_all_commbined_scores = self.scores["combined_agg"][0]
         # ignore children whose combined score ration is less than 0.01
         scored_children = list(filter(lambda x: x in self.scores["combined_agg"] and (
-            (self.scores["combined_agg"][x] / sum_of_all_commbined_scores) >= 0.01), children))
+            (self.scores["combined_agg"][x] / sum_of_all_commbined_scores) >= 0.005), children))
         # sort children by score from most- to least-likely
         scored_children = sorted(scored_children, key=lambda x: self.scores["combined_agg"][x],
                                  reverse=True)
@@ -176,7 +214,7 @@ class ModelResults:
             taxon = self.taxonomy.taxa[child_id]
             # print the taxon with its combined score ratio
             combined_score_ratio = self.scores["combined_agg"][child_id] / self.scores["combined_agg"][0]
-            print(f'{ancestor_prefix}{icon}{taxon.name} :: {combined_score_ratio:.10f}')
+            print(f'{ancestor_prefix}{icon}{taxon.name} ({child_id}) :: {combined_score_ratio:.10f}')
             # recursively repeat for descendants
             if child_id in self.taxonomy.taxon_children:
                 self.print(child_id, f'{ancestor_prefix}{prefixIcon}')

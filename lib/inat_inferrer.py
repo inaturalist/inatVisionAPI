@@ -11,9 +11,11 @@ from lib.model_taxonomy import ModelTaxonomy
 class InatInferrer:
 
     def __init__(self, config):
+        self.config = config
         self.setup_taxonomy(config)
         self.setup_vision_model(config)
         self.setup_geo_model(config)
+        self.upload_folder = "static/"
 
     def setup_taxonomy(self, config):
         self.taxonomy = ModelTaxonomy(config["taxonomy_path"])
@@ -22,10 +24,12 @@ class InatInferrer:
         self.vision_inferrer = VisionInferrer(config["vision_model_path"], self.taxonomy)
 
     def setup_geo_model(self, config):
-        if config["use_tf_gp_model"]:
+        if "use_tf_gp_model" in config and config["use_tf_gp_model"] and "geo_model_path" in config:
             self.geo_model = TFGeoPriorModel(config["tf_geo_model_path"], self.taxonomy)
-        else:
+        elif "geo_model_path" in config:
             self.geo_model = GeoPriorModel(config["geo_model_path"], self.taxonomy)
+        else:
+            self.geo_model = None
 
     def prepare_image_for_inference(self, file_path, image_uuid):
         mime_type = magic.from_file(file_path, mime=True)

@@ -26,7 +26,7 @@ cd inatVisionAPI/
 
 # Set up your python environment
 python3 -m venv venv
-source inatvision-venv/bin/activate
+source venv/bin/activate
 pip3 install -U pip
 pip3 install -r requirements.txt
 

@@ -8,6 +8,12 @@ CONFIG = yaml.safe_load(open("config.yml"))
 @click.option("--path", required=True, type=click.Path(), help="Path to test data CSV.")
 @click.option("--limit", type=int, show_default=True, default=100,
               help="Max number of observations to test.")
+@click.option("--geo/--no-geo", show_default=True, default=True,
+              help="Use geo model.")
+@click.option("--cache", is_flag=True, show_default=True, default=False,
+              help="Use vision results cache.")
+@click.option("--cache-key", type=str, show_default=True, default="default",
+              help="Salt to use when caching vision results.")
 @click.option("--observation_id", type=int, help="Single observation ID to test.")
 @click.option("--filter-iconic/--no-filter-iconic", show_default=True, default=True,
               help="Use iconic taxon for filtering.")
@@ -21,10 +27,11 @@ def test(**args):
     print("\nArguments:")
     print(args)
     print("\nInitializing VisionTesting...\n")
-    VisionTesting(CONFIG, **args)
+    testing = VisionTesting(CONFIG, **args)
+    testing.run()
+    testing.print_scores()
     print("\nDone\n")
 
 
 if __name__ == "__main__":
     test()
-

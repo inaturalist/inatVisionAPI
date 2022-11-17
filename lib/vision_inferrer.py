@@ -13,7 +13,12 @@ class VisionInferrer:
 
     # initialize the TF model given the configured path
     def prepare_tf_model(self):
-        tf.config.set_visible_devices([], "GPU")
+        # disable GPU processing
+        tf.config.set_visible_devices([], 'GPU')
+        visible_devices = tf.config.get_visible_devices()
+        for device in visible_devices:
+            assert device.device_type != 'GPU'
+
         self.vision_model = tf.keras.models.load_model(self.model_path, compile=False)
 
     # given a unique key, generate a path where vision results can be cached
@@ -52,7 +57,7 @@ class VisionInferrer:
         if cached_results is not None:
             preds = cached_results
         else:
-            preds = self.vision_model.predict(image)[0]
+            preds = self.vision_model.predict(image, verbose=0)[0]
             self.cache_results(cache_path, preds)
         filtered_results = {}
         filter_taxon = None if filter_taxon_id is None else self.taxonomy.taxa[filter_taxon_id]
