@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import sys
-sys.path.append("../../geo_prior_inat")
+sys.path.append("../geo_prior_inat")
 from geo_prior import models  # noqa: E402
 from geo_prior import utils  # noqa: E402
 
