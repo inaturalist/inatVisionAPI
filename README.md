@@ -2,19 +2,15 @@
 
 We're doing some computer vision stuff at iNat.
 
-#### ubuntu dependencies
-
-- `apt-get update && apt-get install -y python-virtualenv`
-
 #### os x dependencies
 - `brew install libmagic`
 
 #### python
 
-- `virtualenv inatvision-venv`
-- `source inatvision-venv/bin/activate`
-- `pip install -U pip`
-- `pip install -r requirements.txt`
+- `python3 -m venv venv`
+- `source ./venv/bin/activate`
+- `pip3 install -U pip`
+- `pip3 install -r requirements.txt`
 
 #### installation
 
@@ -29,14 +25,10 @@ git clone git@github.com:inaturalist/inatVisionAPI.git
 cd inatVisionAPI/
 
 # Set up your python environment
-virtualenv inatvision-venv
-source inatvision-venv/bin/activate
-pip install -U pip
-pip install -r requirements.txt
-
-# Get your model and taxon ID files and copy them into place. Note the file names are important.
-cp /path/to/optimized_model-3.pb .
-cp /path/to/taxa.txt .
+python3 -m venv venv
+source venv/bin/activate
+pip3 install -U pip
+pip3 install -r requirements.txt
 
 # Copy your config file (and edit, of course)
 cp config.yml.example config.yml

@@ -1,0 +1,14 @@
+[flake8]
+ignore = D203
+max-line-length = 100
+exclude =
+    .git,
+    __pycache__,
+    log,
+    lib/vision_cache,
+    static,
+    models,
+    test-obs*,
+    venv
+max-complexity = 10
+
