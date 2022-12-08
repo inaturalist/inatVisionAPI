@@ -1,5 +1,6 @@
 import click
 import yaml
+import json
 
 CONFIG = yaml.safe_load(open("config.yml"))
 
@@ -25,7 +26,7 @@ def test(**args):
     # some libraries are slow to import, so wait until command is validated and properly invoked
     from lib.vision_testing import VisionTesting
     print("\nArguments:")
-    print(args)
+    print(json.dumps(args, indent=4))
     print("\nInitializing VisionTesting...\n")
     testing = VisionTesting(CONFIG, **args)
     testing.run()

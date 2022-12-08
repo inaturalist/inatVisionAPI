@@ -13,7 +13,7 @@ from model_scoring import ModelScoring
 class InatVisionAPI:
 
     def __init__(self, config):
-        self.setup_inferrer(config)
+        self.setup_inferrer(config["models"][0])
         self.app = Flask(__name__)
         self.app.secret_key = config["app_secret"]
         self.upload_folder = "static/"
@@ -98,10 +98,6 @@ class InatVisionAPI:
                 "id": self.inferrer.taxonomy.taxa[arg].id,
                 "name": self.inferrer.taxonomy.taxa[arg].name
             })
-
-        total_time = time.time() - vision_start_time
-        print("Total: %0.2fms" % (total_time * 1000.))
-        return to_return
 
         total_time = time.time() - vision_start_time
         print("Total: %0.2fms" % (total_time * 1000.))

@@ -4,11 +4,12 @@ import urllib
 import hashlib
 import magic
 import time
+import json
 import tensorflow as tf
 from PIL import Image
-from lib.test_observation import TestObservation  # noqa: E402
-from lib.inat_inferrer import InatInferrer  # noqa: E402
-from lib.model_results import ModelResults  # noqa: E402
+from lib.test_observation import TestObservation
+from lib.inat_inferrer import InatInferrer
+from lib.model_scoring import ModelScoring
 
 
 class VisionTesting:
@@ -21,20 +22,20 @@ class VisionTesting:
                            "top5_distance_scores", "top10_distance_scores"]:
             self.scores[score_type] = {
                 "vision": {},
-                "combined": {},
-                "recursive": {}
+                "combined": {}
             }
+        print("Models:")
         for index, model_config in enumerate(config["models"]):
+            print(json.dumps(model_config, indent=4))
             model_name = model_config["name"] if "name" in model_config else f'Model {index}'
             model_config["name"] = model_name
             for score_type in ["matching_indices", "top1_distance_scores",
                                "top5_distance_scores", "top10_distance_scores"]:
                 self.scores[score_type]["vision"][index] = []
                 self.scores[score_type]["combined"][index] = []
-                self.scores[score_type]["recursive"][index] = []
 
             self.inferrers[index] = InatInferrer(model_config)
-        # self.inferrers = list(map(lambda x: InatInferrer(x), config["models"]))
+        print("\n")
         self.upload_folder = "static/"
 
     def run(self):
@@ -56,7 +57,7 @@ class VisionTesting:
                         else:
                             continue
                     inferrer_results = self.test_observation(observation)
-                    if results is False:
+                    if inferrer_results is False:
                         # there was some problem processing this test observation. Continue but
                         # don't increment the counter so the requested number of observations
                         # will still be tested
@@ -96,7 +97,7 @@ class VisionTesting:
         for index, inferrer in self.inferrers.items():
             print(inferrer.config["name"])
             all_metrics = {}
-            for method in ["vision", "combined", "recursive"]:
+            for method in ["vision", "combined"]:
                 scores = self.scores["matching_indices"][method][index]
                 top1_distance_scores = self.scores["top1_distance_scores"][method][index]
                 top5_distance_scores = self.scores["top5_distance_scores"][method][index]
@@ -120,7 +121,7 @@ class VisionTesting:
                 all_metrics[method] = metrics
 
             print("method  " + "\t" + "\t".join(all_metrics["vision"].keys()))
-            for method in ["vision", "combined", "recursive"]:
+            for method in ["vision", "combined"]:
                 print(f"{method.ljust(10)}\t" + "\t".join(
                     str(value) for value in all_metrics[method].values()))
             print("\n")
@@ -169,69 +170,61 @@ class VisionTesting:
         cache_path = self.download_photo(observation.photo_url)
         if cache_path is None or not os.path.exists(cache_path):
             return False
-        image = self.prepare_image_for_inference(cache_path)
+        try:
+            image = self.prepare_image_for_inference(cache_path)
+        except Exception as e:
+            print(f'\nObservation: {observation.observation_id} has a bad image')
+            return False
+
         if observation.iconic_taxon_id == "" or self.cmd_args["filter_iconic"] is False:
             iconic_taxon_id = None
         else:
             iconic_taxon_id = int(observation.iconic_taxon_id)
         # calculate vision scores
-        inferrer_results = {}
+        inferrer_scores = {}
         for index, inferrer in self.inferrers.items():
-            vision_results = inferrer.vision_inferrer.process_image(
+            inferrer_scores[index] = {}
+            inferrer_scores[index]["vision"] = inferrer.vision_inferrer.process_image(
                 image, iconic_taxon_id, None)
+
             # calculate geo scores
             if inferrer.geo_model and self.cmd_args["geo"]:
-                geo_results = inferrer.geo_model.predict(
+                geo_scores = inferrer.geo_model.predict(
                     observation.lat, observation.lng, iconic_taxon_id)
+                inferrer_scores[index]["combined"] = ModelScoring.combine_vision_and_geo_scores(
+                    inferrer_scores[index]["vision"], geo_scores)
             else:
-                geo_results = []
-            # prepare and run combined scoring
-            inferrer_results[index] = ModelResults(
-                vision_results, geo_results, inferrer.taxonomy)
-        return inferrer_results
+                inferrer_scores[index]["combined"] = {}
+        return inferrer_scores
 
-    def append_to_aggregate_results(self, observation, inferrer_results):
+    def append_to_aggregate_results(self, observation, inferrer_scores):
         vision_indices = set()
-        for index, results in inferrer_results.items():
-            if self.cmd_args["print_tree"]:
-                print(f'\nResults of Observation: {observation.observation_id}')
-                results.print()
-
+        for index, results in inferrer_scores.items():
             # only look at the top 100 results for this testing
-            top100_vision = self.top_x_results(results.vision_results, 100)
-            top100_combined = self.top_x_results(results.scores["combined"], 100)
-            top100_recursive = self.top_x_results(results.scores["recursive"], 100)
+            top100_vision = self.top_x_results(results["vision"], 100)
+            top100_combined = self.top_x_results(results["combined"], 100)
             vision_index, vision_taxon_distance_scores = self.assess_top_results(
                 observation, top100_vision)
             combined_index, combined_taxon_distance_scores = self.assess_top_results(
                 observation, top100_combined)
-            recursive_index, recursive_taxon_distance_scores = self.assess_top_results(
-                observation, top100_recursive)
             vision_indices.add(vision_index)
             self.scores["matching_indices"]["vision"][index].append(vision_index)
             self.scores["matching_indices"]["combined"][index].append(combined_index)
-            self.scores["matching_indices"]["recursive"][index].append(recursive_index)
             # top1 distance score is just the taxon_distance_score if the first result
             self.scores["top1_distance_scores"]["vision"][index].append(
                 vision_taxon_distance_scores[0])
             self.scores["top1_distance_scores"]["combined"][index].append(
                 combined_taxon_distance_scores[0])
-            self.scores["top1_distance_scores"]["recursive"][index].append(
-                recursive_taxon_distance_scores[0])
-            # # for taxon_distance, top n is the max score of the top n results, or the
-            # # taxon_distance_score of the most closely related taxon in the first n results
+            # for taxon_distance, top n is the max score of the top n results, or the
+            # taxon_distance_score of the most closely related taxon in the first n results
             self.scores["top5_distance_scores"]["vision"][index].append(
                 max(vision_taxon_distance_scores[0:5]))
             self.scores["top5_distance_scores"]["combined"][index].append(
                 max(combined_taxon_distance_scores[0:5]))
-            self.scores["top5_distance_scores"]["recursive"][index].append(
-                max(recursive_taxon_distance_scores[0:5]))
             self.scores["top10_distance_scores"]["vision"][index].append(
                 max(vision_taxon_distance_scores[0:10]))
             self.scores["top10_distance_scores"]["combined"][index].append(
                 max(combined_taxon_distance_scores[0:10]))
-            self.scores["top10_distance_scores"]["recursive"][index].append(
-                max(recursive_taxon_distance_scores[0:10]))
         # if len(vision_indices) > 1:
         #     print(vision_indices)
         #     print(f'\nResults of Observation: {observation.observation_id}')
