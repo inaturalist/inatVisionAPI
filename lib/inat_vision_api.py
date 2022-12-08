@@ -1,3 +1,4 @@
+import datetime
 import time
 import os
 import urllib
@@ -34,6 +35,8 @@ class InatVisionAPI:
         else:
             geomodel = form.geomodel.data
         if request.method == "POST" or observation_id:
+            request_start_datetime = datetime.datetime.now()
+            request_start_time = time.time()
             lat = form.lat.data
             lng = form.lng.data
             file_path = None
@@ -50,7 +53,9 @@ class InatVisionAPI:
                 return render_template("home.html")
 
             image = self.inferrer.prepare_image_for_inference(file_path, image_uuid)
-            return self.score_image(image, lat, lng, iconic_taxon_id, geomodel)
+            scores = self.score_image(image, lat, lng, iconic_taxon_id, geomodel)
+            self.write_logstash(image_uuid, file_path, request_start_datetime, request_start_time)
+            return scores
         else:
             return render_template("home.html")
 
@@ -129,3 +134,16 @@ class InatVisionAPI:
         latlng = data["results"][0]["location"].split(",")
         # return the path to the cached image, coordinates, and iconic taxon
         return cache_path, latlng[0], latlng[1], data["results"][0]["taxon"]["iconic_taxon_id"]
+
+    def write_logstash(self, image_uuid, file_path, request_start_datetime, request_start_time):
+        request_end_time = time.time()
+        request_time = round((request_end_time - request_start_time) * 1000, 6)
+        logstash_log = open('log/logstash.log', 'a')
+        log_data = {'@timestamp': request_start_datetime.isoformat(),
+                    'uuid': image_uuid,
+                    'duration': request_time,
+                    'client_ip': request.access_route[0],
+                    'image_size': os.path.getsize(file_path)}
+        json.dump(log_data, logstash_log)
+        logstash_log.write("\n")
+        logstash_log.close()
