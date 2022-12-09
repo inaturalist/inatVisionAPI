@@ -76,3 +76,45 @@ class TFGeoPriorModel:
             geo_pred_dict[taxon_id] = pred
 
         return geo_pred_dict
+
+    
+    def eval_one_class(self, latitude, longitude, class_of_interest):
+        """Evalutes the model for a single class and multiple locations
+
+        Args:
+            latitude (list): A list of latitudes
+            longitude (list): A list of longitudes (same length as latitude)
+            class_of_interest (int): The single class to eval
+
+        Returns:
+            numpy array: scores for class of interest at each location
+        """
+        def encode_loc(latitude, longitude):
+            latitude = np.array(latitude)
+            longitude = np.array(longitude)
+            grid_lon = longitude.astype('float32') / 180.0
+            grid_lat = latitude.astype('float32') / 90.0
+            norm_loc = tf.stack([grid_lon, grid_lat], axis=1)
+            encoded_loc = tf.concat([
+                tf.sin(norm_loc * math.pi),
+                tf.cos(norm_loc * math.pi)
+            ], axis=1)
+            return encoded_loc
+
+        encoded_loc = encode_loc(latitude, longitude)
+        loc_emb = self.layers[0](encoded_loc)
+        
+        # res layers - feature extraction
+        x = self.layers[1](loc_emb)
+        x = self.layers[2](x)
+        x = self.layers[3](x)
+        x = self.layers[4](x)
+        
+        # process just the one class
+        return tf.keras.activations.sigmoid(
+            tf.matmul(
+                x, 
+                tf.expand_dims(self.layers[5].weights[0][:,class_of_interest], axis=0),
+                transpose_b=True
+            )
+        ).numpy()
