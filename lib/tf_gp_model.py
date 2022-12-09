@@ -102,19 +102,19 @@ class TFGeoPriorModel:
             return encoded_loc
 
         encoded_loc = encode_loc(latitude, longitude)
-        loc_emb = self.layers[0](encoded_loc)
+        loc_emb = self.gpmodel.layers[0](encoded_loc)
         
         # res layers - feature extraction
-        x = self.layers[1](loc_emb)
-        x = self.layers[2](x)
-        x = self.layers[3](x)
-        x = self.layers[4](x)
+        x = self.gpmodel.layers[1](loc_emb)
+        x = self.gpmodel.layers[2](x)
+        x = self.gpmodel.layers[3](x)
+        x = self.gpmodel.layers[4](x)
         
         # process just the one class
         return tf.keras.activations.sigmoid(
             tf.matmul(
                 x, 
-                tf.expand_dims(self.layers[5].weights[0][:,class_of_interest], axis=0),
+                tf.expand_dims(self.gpmodel.layers[5].weights[0][:,class_of_interest], axis=0),
                 transpose_b=True
             )
         ).numpy()
