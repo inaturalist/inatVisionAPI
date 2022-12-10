@@ -169,7 +169,7 @@ if __name__ == "__main__":
                '   python generate_thresholds.py --model_path tf_geoprior_1_4_r6.h5 \n' + \
                '   --taxonomy_path taxonomy_1_4.csv\n' + \
                '   --test_spatial_data_path test_spatial_data.csv\n' + \
-               '   --train_spatial_data_path test_spatial_data.csv\n' + \
+               '   --train_spatial_data_path train_spatial_data.csv\n' + \
                '   --output_path thresholds.csv\n'
     
     parser = argparse.ArgumentParser(usage=info_str)
