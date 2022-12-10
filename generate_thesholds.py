@@ -1,5 +1,5 @@
 """
-Script to generate thresholds from a tensor flow model, taxonomu, test and train data
+Script to generate thresholds from a tensor flow model, taxonomy, test and train data
 """
 
 import argparse
