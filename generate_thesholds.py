@@ -108,7 +108,7 @@ def main(args):
     
     print("calculating absences...")
     h3_resolution = 3
-    test_df_h3 = train_df.h3.geo_to_h3(h3_resolution)
+    test_df_h3 = test_df.h3.geo_to_h3(h3_resolution)
     train_df_h3 = train_df.h3.geo_to_h3(h3_resolution)
     full_spatial_data_lookup_table = pd.concat([train_df_h3, test_df_h3]).pivot_table(
         index="h3_0"+str(h3_resolution),
