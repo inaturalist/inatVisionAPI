@@ -96,7 +96,7 @@ def main(args):
     world = gpd.read_file(gpd.datasets.get_path('naturalearth_lowres'))
     geoJson1 = {'type': 'Polygon', 'coordinates': [[[90,-180],[90,0],[-90,0],[-90,-180]]]}
     geoJson2 = {'type': 'Polygon', 'coordinates': [[[90,0],[90,180],[-90,180],[-90,0]]]}
-    h3_resolution = 5
+    h3_resolution = 4
     hexagons = list(h3.polyfill(geoJson1, h3_resolution)) + list(h3.polyfill(geoJson2, h3_resolution))
     polygonise = lambda hex_id: Polygon(
             h3.h3_to_geo_boundary(hex_id, geo_json=True)
