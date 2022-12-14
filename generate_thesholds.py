@@ -41,23 +41,26 @@ def pseudo_absences_for_taxon_id(
     
     #count cutoff is mean background count per target taxon count in target taxon presence cells
     count_cutoff = ratios_for_taxon_id(taxon_id, all_spatial_grid_counts, train_df_h3).mean()
-    
+    cutoff_grid_cell_indices = set(all_spatial_grid_counts[all_spatial_grid_counts>count_cutoff].index)
+
     #absence candidates from test
-    sample = test_df_h3.sample(10_000)
+    ilocs = np.unique(np.random.randint(0, len(test_df_h3), 10_000))
     sample_occupancy_pseudoabsences = []
-    for i, row in sample.iterrows():
-        if taxon_id in full_spatial_data_lookup_table.loc[row.name].taxon_id:
-            #candidate in cell containing target taxon so can't be absence
-            pass
-        else:
-            if row.name in all_spatial_grid_counts.index:
-                if all_spatial_grid_counts.loc[row.name] > count_cutoff:
-                    #candidate in cell not containing target taxon and
-                    #count is greater than count cutoff. Use as absence
-                    sample_occupancy_pseudoabsences.append(
-                        (row.lat, row.lng)
-                    )
-                
+
+    for i in ilocs:
+        row = test_df_h3.iloc[i]
+
+        if row.name in cutoff_grid_cell_indices:
+            if taxon_id in full_spatial_data_lookup_table.loc[row.name].taxon_id:
+                #candidate in cell containing target taxon so can't be absence
+                pass
+            else:
+                #candidate in cell not containing target taxon and
+                #count is greater than count cutoff. Use as absence
+                sample_occupancy_pseudoabsences.append(
+                    (row.lat, row.lng)
+                )
+    
         #limit number of absences
         if len(sample_occupancy_pseudoabsences) >= 500:
             break
