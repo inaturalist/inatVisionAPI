@@ -1,5 +1,5 @@
 """
-Script to generate thresholds from a tensor flow model, taxonomy, test and train data
+Script to generate thresholds from a (tensorflow or pytorch) model, taxonomy, test and train data
 """
 
 import argparse
@@ -10,10 +10,7 @@ import numpy as np
 import math
 from sklearn.metrics import precision_recall_curve
 from sklearn.metrics import auc
-
-from lib.taxon import Taxon
-from lib.model_taxonomy import ModelTaxonomy
-from lib.tf_gp_model import TFGeoPriorModel
+import sys
 
 def ratios_for_taxon_id(taxon_id, all_spatial_grid_counts, train_df_h3):
     
@@ -42,11 +39,10 @@ def pseudo_absences_for_taxon_id(
     #count cutoff is mean background count per target taxon count in target taxon presence cells
     count_cutoff = ratios_for_taxon_id(taxon_id, all_spatial_grid_counts, train_df_h3).mean()
     cutoff_grid_cell_indices = set(all_spatial_grid_counts[all_spatial_grid_counts>count_cutoff].index)
-
+    
     #absence candidates from test
     ilocs = np.unique(np.random.randint(0, len(test_df_h3), 10_000))
     sample_occupancy_pseudoabsences = []
-
     for i in ilocs:
         row = test_df_h3.iloc[i]
 
@@ -60,11 +56,11 @@ def pseudo_absences_for_taxon_id(
                 sample_occupancy_pseudoabsences.append(
                     (row.lat, row.lng)
                 )
-    
+        
         #limit number of absences
         if len(sample_occupancy_pseudoabsences) >= 500:
             break
-
+    
     sample_occupancy_pseudoabsences = pd.DataFrame(
         sample_occupancy_pseudoabsences,
         columns=["lat", "lng"]
@@ -94,6 +90,21 @@ def get_predictions(latitude,longitude,taxon_id, mt, tfgpm):
     )
     return predictions
 
+def get_predictions_py(latitude,longitude,taxon_id, net_params, model, torch):
+    
+    class_of_interest = net_params["params"]["class_to_taxa"].index(taxon_id)
+    grid_lon = torch.from_numpy(longitude/180)
+    grid_lat = torch.from_numpy(latitude/90)
+    grid_lon = grid_lon.repeat(1,1).unsqueeze(2)
+    grid_lat = grid_lat.repeat(1, 1).unsqueeze(2)
+    loc_ip = torch.cat((grid_lon, grid_lat), 2)
+    feats = torch.cat((torch.sin(math.pi*loc_ip), torch.cos(math.pi*loc_ip)), 2)
+    model.eval()
+    with torch.no_grad():
+        pred = model(feats, class_of_interest=class_of_interest)
+        predictions = pred.cpu().numpy()[0]
+    return predictions
+    
 def main(args):
     
     print("loading in test and train data...")
@@ -108,13 +119,14 @@ def main(args):
         "longitude": "lng"
     }, axis=1)
     taxon_ids = test_df.taxon_id.unique()
+    if args.stop_after is not None:
+        taxon_ids = taxon_ids[0:args.stop_after]
     
     print("calculating absences...")
-    h3_resolution = 3
-    test_df_h3 = test_df.h3.geo_to_h3(h3_resolution)
-    train_df_h3 = train_df.h3.geo_to_h3(h3_resolution)
+    test_df_h3 = test_df.h3.geo_to_h3(args.h3_resolution)
+    train_df_h3 = train_df.h3.geo_to_h3(args.h3_resolution)
     full_spatial_data_lookup_table = pd.concat([train_df_h3, test_df_h3]).pivot_table(
-        index="h3_0"+str(h3_resolution),
+        index="h3_0"+str(args.h3_resolution),
         values="taxon_id",
         aggfunc=set
     )
@@ -131,9 +143,25 @@ def main(args):
         pseudoabsence_df = pd.concat([pseudoabsence_df, pa])
     
     print("calculating thresholds...")
-    mt = ModelTaxonomy(args.taxonomy_path)
-    tfgpm = TFGeoPriorModel(args.model_path, mt)
-        
+    if args.model_type == "tf":
+        from lib.taxon import Taxon
+        from lib.model_taxonomy import ModelTaxonomy
+        from lib.tf_gp_model import TFGeoPriorModel
+        mt = ModelTaxonomy(args.taxonomy_path)
+        tfgpm = TFGeoPriorModel(args.model_path, mt)   
+    elif args.model_type == "pytorch":
+        import torch
+        sys.path.append("../geo_prior_inat")
+        from geo_prior import models
+        net_params = torch.load(args.model_path, map_location="cpu")
+        net_params["params"]['device'] = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        model_name = models.select_model(net_params["params"]["model"])
+        model = model_name(num_inputs=net_params["params"]['num_feats'],
+                           num_classes=net_params["params"]['num_classes'],
+                           num_filts=net_params["params"]['num_filts'],
+                           num_users=net_params["params"]['num_users'],
+                           num_context=net_params["params"]['num_context']).to(net_params["params"]['device'])
+        model.load_state_dict(net_params['state_dict'])        
     output = []
     for taxon_id in tqdm(taxon_ids):
         absences = pseudoabsence_df[pseudoabsence_df.taxon_id==taxon_id]
@@ -150,7 +178,10 @@ def main(args):
             absences.lat.values.astype('float32')
         ))
         
-        predictions = get_predictions(latitude, longitude, taxon_id, mt, tfgpm)
+        if args.model_type == "tf":
+            predictions = get_predictions(latitude, longitude, taxon_id, mt, tfgpm)
+        elif args.model_type == "pytorch":
+            predictions = get_predictions_py(latitude, longitude, taxon_id, net_params, model, torch)
         threshold, prauc = get_threshold(test, predictions)
         
         row = {
@@ -169,13 +200,18 @@ def main(args):
 if __name__ == "__main__":
     
     info_str = '\nrun as follows\n' + \
-               '   python generate_thresholds.py --model_path tf_geoprior_1_4_r6.h5 \n' + \
+               '   python generate_thresholds.py --model_type tf \n' + \
+               '   --model_path tf_geoprior_1_4_r6.h5 \n' + \
                '   --taxonomy_path taxonomy_1_4.csv\n' + \
                '   --test_spatial_data_path test_spatial_data.csv\n' + \
                '   --train_spatial_data_path train_spatial_data.csv\n' + \
-               '   --output_path thresholds.csv\n'
+               '   --output_path thresholds.csv\n' + \
+               '   --h3_resolution 3\n' + \
+               '   --stop_after 10\n'
     
     parser = argparse.ArgumentParser(usage=info_str)
+    parser.add_argument('--model_type', type=str,
+                        help='Can be either "tf" or "pytorch".', required=True)
     parser.add_argument('--model_path', type=str,
                         help='Path to tf model.', required=True)
     parser.add_argument('--taxonomy_path', type=str,
@@ -186,6 +222,10 @@ if __name__ == "__main__":
                         help='Path to train csv for occupancy.', required=True)
     parser.add_argument('--output_path', type=str,
                         help='Path to write thesholds.', required=True)
+    parser.add_argument('--h3_resolution', type=int, default=3,
+        help='grid resolution from 0 - 15, lower numbers are coarser/faster. Recommend 3, 4, or 5')
+    parser.add_argument('--stop_after', type=int,
+        help='just run the first x taxa')
     args = parser.parse_args()
 
     main(args)
