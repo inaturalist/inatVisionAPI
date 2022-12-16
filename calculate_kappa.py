@@ -158,31 +158,40 @@ def main(args):
         kml_url = 'https://www.inaturalist.org/taxa/'+ str(taxon_id) +'/range.kml'
         kml_path = r'geojsons/'+ str(taxon_id) +'.kml'
         geojson_path = r'geojsons/'+ str(taxon_id) +'.geojson'
-        if exists(geojson_path)==False:
-            kml_response = requests.get(kml_url)
-            if kml_response.status_code != 200:
-                if exists(kml_path)==True:
-                    os.remove(kml_path)
-                time.sleep(2.5) #avoid hammering server
+        if exists(geojson_path) == False:
+            if args.fetch_remote_geojson == True:
+                kml_response = requests.get(kml_url)
+                if kml_response.status_code != 200:
+                    if exists(kml_path)==True:
+                        os.remove(kml_path)
+                        time.sleep(2.5) #avoid hammering server
+                        continue
+                open(kml_path, "wb").write(kml_response.content)
+                with open(kml_path) as f:
+                    first_line = f.readline()
+                if first_line == "<!DOCTYPE html>\n":
+                    if exists(kml_path) == True:
+                        os.remove(kml_path)
+                    del f
+                    del first_line
+                    gc.collect()
+                    time.sleep(2.5) #avoid hammering server
+                    continue
+                cmd = "ogr2ogr -f GeoJSON " + geojson_path + " " + kml_path
+                os.system(cmd)
+                os.remove(kml_path)
+            else:
                 continue
-            open(kml_path, "wb").write(kml_response.content)
-            with open(kml_path) as f:
-                first_line = f.readline()
-            if first_line == "<!DOCTYPE html>\n":
-                if exists(kml_path)==True:
-                    os.remove(kml_path)
-                time.sleep(2.5) #avoid hammering server
-                continue
-            cmd = "ogr2ogr -f GeoJSON " + geojson_path + " " + kml_path
-            os.system(cmd)
-            os.remove(kml_path)
         
         tr = gpd.read_file(geojson_path)
         try:
             tr_h3 = util.h3index_column_to_geodataframe(vector.geodataframe_to_h3(tr, args.h3_resolution))
         except:
+            del tr
+            gc.collect()
             continue
         
+        del tr
         gc.collect()
         
         if args.model_type == "tf":
@@ -240,6 +249,7 @@ if __name__ == "__main__":
                '   --png_folder pngs\n' + \
                '   --h3_resolution 4\n' + \
                '   --stop_after 10\n' + \
+               '   --fetch_remote_geojson True\n' + \
                '   --mask_land True\n'
     
     parser = argparse.ArgumentParser(usage=info_str)
@@ -259,6 +269,8 @@ if __name__ == "__main__":
         help='grid resolution from 0 - 15, lower numbers are coarser/faster. Recommend 3, 4, or 5')
     parser.add_argument('--stop_after', type=int,
         help='just run the first x taxa')
+    parser.add_argument('--fetch_remote_geojson', type=bool, default=False,
+        help='try fetching a remote geojson if one does not exist locally')
     parser.add_argument('--mask_land', type=bool, default=False,
         help='exclude oceans')
     args = parser.parse_args()
