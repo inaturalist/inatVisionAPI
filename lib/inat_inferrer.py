@@ -2,7 +2,7 @@ import os
 import magic
 import tensorflow as tf
 from PIL import Image
-from lib.geo_prior_model import GeoPriorModel
+from lib.pt_geo_prior_model import PTGeoPriorModel
 from lib.tf_gp_model import TFGeoPriorModel
 from lib.vision_inferrer import VisionInferrer
 from lib.model_taxonomy import ModelTaxonomy
@@ -24,10 +24,10 @@ class InatInferrer:
         self.vision_inferrer = VisionInferrer(config["vision_model_path"], self.taxonomy)
 
     def setup_geo_model(self, config):
-        if "use_tf_gp_model" in config and config["use_tf_gp_model"] and "geo_model_path" in config:
+        if "use_pt_gp_model" in config and config["use_pt_gp_model"] and "pt_geo_model_path" in config:
+            self.geo_model = PTGeoPriorModel(config["pt_geo_model_path"], self.taxonomy)
+        elif "tf_geo_model_path" in config:
             self.geo_model = TFGeoPriorModel(config["tf_geo_model_path"], self.taxonomy)
-        elif "geo_model_path" in config:
-            self.geo_model = GeoPriorModel(config["geo_model_path"], self.taxonomy)
         else:
             self.geo_model = None
 

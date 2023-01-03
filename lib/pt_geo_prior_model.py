@@ -1,14 +1,13 @@
 import torch
 import numpy as np
 import sys
-sys.path.append("../geo_prior_inat")
-from geo_prior import models  # noqa: E402
-from geo_prior import utils  # noqa: E402
 
 
-class GeoPriorModel:
+class PTGeoPriorModel:
 
     def __init__(self, model_path, taxonomy):
+        sys.path.append("../geo_prior_inat")
+        from geo_prior import models
         self.taxonomy = taxonomy
         # initialize the geo model for inference
         net_params = torch.load(model_path, map_location="cpu")
@@ -26,6 +25,7 @@ class GeoPriorModel:
         self.model.eval()
 
     def predict(self, latitude, longitude, filter_taxon_id=None):
+        from geo_prior import utils
         filter_taxon = None
         if filter_taxon_id is not None:
             try:

@@ -77,7 +77,6 @@ class TFGeoPriorModel:
 
         return geo_pred_dict
 
-    
     def eval_one_class(self, latitude, longitude, class_of_interest):
         """Evalutes the model for a single class and multiple locations
 
