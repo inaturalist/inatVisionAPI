@@ -85,7 +85,9 @@ class InatVisionAPI:
 
         # Scoring
         scoring_start_time = time.time()
-        combined_scores = ModelScoring.combine_vision_and_geo_scores(vision_scores, geo_scores)
+        combined_scores = ModelScoring.combine_vision_and_geo_scores(
+            vision_scores, geo_scores,
+            self.inferrer.config["geo_min"] if "geo_min" in self.inferrer.config else 0)
 
         # results.aggregate_scores()
         scoring_total_time = time.time() - scoring_start_time
