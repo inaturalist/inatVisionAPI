@@ -34,6 +34,10 @@ class InatVisionAPI:
             geomodel = request.args["geomodel"]
         else:
             geomodel = form.geomodel.data
+        if "elevation_model" in request.args:
+            elevation_model = request.args["elevation_model"]
+        else:
+            elevation_model = form.elevation_model.data
         if request.method == "POST" or observation_id:
             request_start_datetime = datetime.datetime.now()
             request_start_time = time.time()
@@ -53,16 +57,16 @@ class InatVisionAPI:
                 return render_template("home.html")
 
             image = self.inferrer.prepare_image_for_inference(file_path, image_uuid)
-            scores = self.score_image(image, lat, lng, iconic_taxon_id, geomodel)
+            scores = self.score_image(image, lat, lng, iconic_taxon_id, geomodel, elevation_model)
             self.write_logstash(image_uuid, file_path, request_start_datetime, request_start_time)
             return scores
         else:
             return render_template("home.html")
 
-    def score_image(self, image, lat, lng, iconic_taxon_id, geomodel):
+    def score_image(self, image, lat, lng, iconic_taxon_id, geomodel, elevation_model):
         # Vision
         vision_start_time = time.time()
-        vision_scores = self.inferrer.vision_inferrer.process_image(image, iconic_taxon_id)
+        vision_scores = self.inferrer.vision_predict(image, iconic_taxon_id)
         vision_total_time = time.time() - vision_start_time
         print("Vision Time: %0.2fms" % (vision_total_time * 1000.))
 
@@ -76,10 +80,8 @@ class InatVisionAPI:
 
         # Geo
         geo_start_time = time.time()
-        if lat is not None and lat != "" and lng is not None and lng != "":
-            geo_scores = self.inferrer.geo_model.predict(lat, lng, iconic_taxon_id)
-        else:
-            geo_scores = {}
+        geo_scores = self.inferrer.geo_model_predict(
+            lat, lng, iconic_taxon_id, "elevation" if elevation_model == "true" else "original")
         geo_total_time = time.time() - geo_start_time
         print("GeoTime: %0.2fms" % (geo_total_time * 1000.))
 
@@ -103,8 +105,11 @@ class InatVisionAPI:
                 "vision_score": round(vision_scores[arg] * 100, 6),
                 "geo_score": round(geo_score * 100, 6),
                 "id": self.inferrer.taxonomy.taxa[arg].id,
-                "name": self.inferrer.taxonomy.taxa[arg].name
+                "name": self.inferrer.taxonomy.taxa[arg].name,
             })
+        if elevation_model == "true" and "tf_elev_thresholds" in self.inferrer.config:
+            for data in to_return:
+                data["seen_nearby"] = self.inferrer.is_seen_nearby(data["id"], data["geo_score"])
 
         total_time = time.time() - vision_start_time
         print("Total: %0.2fms" % (total_time * 1000.))

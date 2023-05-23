@@ -7,10 +7,13 @@ CONFIG = yaml.safe_load(open("config.yml"))
 
 @click.command()
 @click.option("--path", required=True, type=click.Path(), help="Path to test data CSV.")
+@click.option("--label", required=True, type=str, help="Label used for output.")
 @click.option("--limit", type=int, show_default=True, default=100,
               help="Max number of observations to test.")
 @click.option("--geo/--no-geo", show_default=True, default=True,
               help="Use geo model.")
+@click.option("--elevation/--no-elevation", show_default=True, default=False,
+              help="Use geo elevation model.")
 @click.option("--cache", is_flag=True, show_default=True, default=False,
               help="Use vision results cache.")
 @click.option("--cache-key", type=str, show_default=True, default="default",
