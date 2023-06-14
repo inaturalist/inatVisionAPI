@@ -76,10 +76,11 @@ class InatInferrer:
             return {}
         if geo_model_type == "elevation":
             # lookup the H3 cell this lat lng occurs in
-            h3_cell = h3.latlng_to_cell(float(lat), float(lng), 4)
+            h3_cell = h3.geo_to_h3(float(lat), float(lng), 4)
+            h3_cell_centroid = h3.h3_to_geo(h3_cell)
             # get the average elevation of the above H3 cell
             elevation = self.geo_elevation_cells.loc[h3_cell].elevation
-            geo_scores = self.geo_elevation_model.predict(float(lat), float(lng), float(elevation), iconic_taxon_id)
+            geo_scores = self.geo_elevation_model.predict(h3_cell_centroid[0], h3_cell_centroid[1], float(elevation), iconic_taxon_id)
         else:
             geo_scores = self.geo_model.predict(lat, lng, iconic_taxon_id)
         return geo_scores
