@@ -62,7 +62,7 @@ class InatVisionAPI:
     def score_image(self, image, lat, lng, iconic_taxon_id, geomodel):
         # Vision
         vision_start_time = time.time()
-        vision_scores = self.inferrer.vision_inferrer.process_image(image, iconic_taxon_id)
+        vision_scores = self.inferrer.vision_predict(image, iconic_taxon_id)
         vision_total_time = time.time() - vision_start_time
         print("Vision Time: %0.2fms" % (vision_total_time * 1000.))
 
@@ -76,10 +76,7 @@ class InatVisionAPI:
 
         # Geo
         geo_start_time = time.time()
-        if lat is not None and lat != "" and lng is not None and lng != "":
-            geo_scores = self.inferrer.geo_model.predict(lat, lng, iconic_taxon_id)
-        else:
-            geo_scores = {}
+        geo_scores = self.inferrer.geo_model_predict(lat, lng, iconic_taxon_id)
         geo_total_time = time.time() - geo_start_time
         print("GeoTime: %0.2fms" % (geo_total_time * 1000.))
 
@@ -103,8 +100,11 @@ class InatVisionAPI:
                 "vision_score": round(vision_scores[arg] * 100, 6),
                 "geo_score": round(geo_score * 100, 6),
                 "id": self.inferrer.taxonomy.taxa[arg].id,
-                "name": self.inferrer.taxonomy.taxa[arg].name
+                "name": self.inferrer.taxonomy.taxa[arg].name,
             })
+        if "tf_elev_thresholds" in self.inferrer.config:
+            for data in to_return:
+                data["geo_threshold"] = self.inferrer.geo_threshold(data["id"])
 
         total_time = time.time() - vision_start_time
         print("Total: %0.2fms" % (total_time * 1000.))

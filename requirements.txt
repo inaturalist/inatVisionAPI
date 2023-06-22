@@ -18,3 +18,4 @@ itsdangerous
 werkzeug
 WTForms
 flake8
+h3
