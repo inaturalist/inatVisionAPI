@@ -34,10 +34,6 @@ class InatVisionAPI:
             geomodel = request.args["geomodel"]
         else:
             geomodel = form.geomodel.data
-        if "elevation_model" in request.args:
-            elevation_model = request.args["elevation_model"]
-        else:
-            elevation_model = form.elevation_model.data
         if request.method == "POST" or observation_id:
             request_start_datetime = datetime.datetime.now()
             request_start_time = time.time()
@@ -57,13 +53,13 @@ class InatVisionAPI:
                 return render_template("home.html")
 
             image = self.inferrer.prepare_image_for_inference(file_path, image_uuid)
-            scores = self.score_image(image, lat, lng, iconic_taxon_id, geomodel, elevation_model)
+            scores = self.score_image(image, lat, lng, iconic_taxon_id, geomodel)
             self.write_logstash(image_uuid, file_path, request_start_datetime, request_start_time)
             return scores
         else:
             return render_template("home.html")
 
-    def score_image(self, image, lat, lng, iconic_taxon_id, geomodel, elevation_model):
+    def score_image(self, image, lat, lng, iconic_taxon_id, geomodel):
         # Vision
         vision_start_time = time.time()
         vision_scores = self.inferrer.vision_predict(image, iconic_taxon_id)
@@ -80,8 +76,7 @@ class InatVisionAPI:
 
         # Geo
         geo_start_time = time.time()
-        geo_scores = self.inferrer.geo_model_predict(
-            lat, lng, iconic_taxon_id, "elevation" if elevation_model == "true" else "original")
+        geo_scores = self.inferrer.geo_model_predict(lat, lng, iconic_taxon_id)
         geo_total_time = time.time() - geo_start_time
         print("GeoTime: %0.2fms" % (geo_total_time * 1000.))
 
@@ -107,9 +102,9 @@ class InatVisionAPI:
                 "id": self.inferrer.taxonomy.taxa[arg].id,
                 "name": self.inferrer.taxonomy.taxa[arg].name,
             })
-        if elevation_model == "true" and "tf_elev_thresholds" in self.inferrer.config:
+        if "tf_elev_thresholds" in self.inferrer.config:
             for data in to_return:
-                data["seen_nearby"] = self.inferrer.is_seen_nearby(data["id"], data["geo_score"])
+                data["geo_threshold"] = self.inferrer.geo_threshold(data["id"])
 
         total_time = time.time() - vision_start_time
         print("Total: %0.2fms" % (total_time * 1000.))

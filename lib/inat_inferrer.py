@@ -69,21 +69,20 @@ class InatInferrer:
     def vision_predict(self, image, iconic_taxon_id):
         return self.vision_inferrer.process_image(image, iconic_taxon_id)
 
-    def geo_model_predict(self, lat, lng, iconic_taxon_id, geo_model_type="original"):
+    def geo_model_predict(self, lat, lng, iconic_taxon_id):
         if lat is None or lat == "" or lng is None or lng == "":
             return {}
-        if geo_model_type == "elevation" and self.geo_elevation_model is None:
+        if self.geo_elevation_model is None:
             return {}
-        if geo_model_type == "elevation":
-            # lookup the H3 cell this lat lng occurs in
-            h3_cell = h3.geo_to_h3(float(lat), float(lng), 4)
-            h3_cell_centroid = h3.h3_to_geo(h3_cell)
-            # get the average elevation of the above H3 cell
-            elevation = self.geo_elevation_cells.loc[h3_cell].elevation
-            geo_scores = self.geo_elevation_model.predict(h3_cell_centroid[0], h3_cell_centroid[1], float(elevation), iconic_taxon_id)
-        else:
-            geo_scores = self.geo_model.predict(lat, lng, iconic_taxon_id)
+        # lookup the H3 cell this lat lng occurs in
+        h3_cell = h3.geo_to_h3(float(lat), float(lng), 4)
+        h3_cell_centroid = h3.h3_to_geo(h3_cell)
+        # get the average elevation of the above H3 cell
+        elevation = self.geo_elevation_cells.loc[h3_cell].elevation
+        geo_scores = self.geo_elevation_model.predict(h3_cell_centroid[0], h3_cell_centroid[1], float(elevation), iconic_taxon_id)
         return geo_scores
 
-    def is_seen_nearby(self, taxon_id, geo_score):
-        return True if geo_score >= self.geo_thresholds.loc[taxon_id].thres else False
+    def geo_threshold(self, taxon_id):
+        if self.geo_thresholds is None or taxon_id not in self.geo_thresholds.index:
+            return 100
+        return round(self.geo_thresholds.loc[taxon_id].thres, 4)

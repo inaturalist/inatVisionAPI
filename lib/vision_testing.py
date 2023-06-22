@@ -54,11 +54,11 @@ class VisionTesting:
                         # if only one target observation was requested, test this row if it
                         # matches the request, otherwise skip it
                         if int(observation.observation_id) == target_observation_id:
-                            self.test_observation(observation)
-                            return
+                            inferrer_results = self.test_observation(observation)
                         else:
                             continue
-                    inferrer_results = self.test_observation(observation)
+                    else:
+                        inferrer_results = self.test_observation(observation)
                     if inferrer_results is False:
                         # there was some problem processing this test observation. Continue but
                         # don't increment the counter so the requested number of observations
@@ -139,7 +139,7 @@ class VisionTesting:
         image = tf.image.decode_jpeg(image, channels=3)
         image = tf.image.convert_image_dtype(image, tf.float32)
         image = tf.image.central_crop(image, 0.875)
-        image = tf.image.resize(image, [299, 299])
+        image = tf.image.resize(image, [299, 299], tf.image.ResizeMethod.NEAREST_NEIGHBOR)
         return tf.expand_dims(image, 0)
 
     def assess_top_results(self, observation, top_results):
@@ -198,8 +198,7 @@ class VisionTesting:
             # calculate geo scores
             if inferrer.geo_model and self.cmd_args["geo"]:
                 geo_scores = inferrer.geo_model_predict(
-                    observation.lat, observation.lng, iconic_taxon_id,
-                    "elevation" if self.cmd_args["elevation"] else "original")
+                    observation.lat, observation.lng, iconic_taxon_id)
                 inferrer_scores[index]["combined"] = ModelScoring.combine_vision_and_geo_scores(
                     inferrer_scores[index]["vision"],
                     geo_scores,
@@ -275,13 +274,9 @@ class VisionTesting:
                     max(vision_taxon_distance_scores[0:10]))
                 self.scores["top10_distance_scores"]["combined"][index].append(
                     max(combined_taxon_distance_scores[0:10]))
-        # if len(vision_indices) > 1:
-        #     print(vision_indices)
-        #     print(f'\nResults of Observation: {observation.observation_id}')
-        #     for index, results in inferrer_results.items():
-        #         print(self.inferrers[index].config["name"])
-        #         results.print()
-        #     print("===================================================\n")
+
+        # if len(combined_indices) > 1:
+        #     print(f'Results of Observation: {observation.observation_id}: {combined_indices}')
 
     def download_photo(self, photo_url):
         checksum = hashlib.md5(photo_url.encode()).hexdigest()
