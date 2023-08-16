@@ -44,15 +44,7 @@ class TFGeoPriorModel:
             compile=False
         )
 
-    def predict(self, latitude, longitude, filter_taxon_id=None):
-        filter_taxon = None
-        if filter_taxon_id is not None:
-            try:
-                filter_taxon = self.taxonomy.taxa[filter_taxon_id]
-            except Exception as e:
-                print(f'filter_taxon `{filter_taxon_id}` does not exist in the taxonomy')
-                raise e
-
+    def predict(self, latitude, longitude):
         norm_lat = np.array([float(latitude)]) / 90.0
         norm_lng = np.array([float(longitude)]) / 180.0
         norm_loc = tf.stack([norm_lng, norm_lat], axis=1)
@@ -60,22 +52,7 @@ class TFGeoPriorModel:
             tf.sin(norm_loc * math.pi),
             tf.cos(norm_loc * math.pi)
         ], axis=1)
-
-        preds = self.gpmodel.predict([encoded_loc], verbose=0)[0]
-        geo_pred_dict = {}
-        for index, pred in enumerate(preds):
-            if index not in self.taxonomy.leaf_class_to_taxon:
-                continue
-            taxon_id = self.taxonomy.leaf_class_to_taxon[index]
-            if filter_taxon_id is not None:
-                taxon = self.taxonomy.taxa[taxon_id]
-                # the predicted taxon is not the filter_taxon or a descendent, so skip it
-                if not taxon.is_or_descendant_of(filter_taxon):
-                    continue
-
-            geo_pred_dict[taxon_id] = pred
-
-        return geo_pred_dict
+        return self.gpmodel.predict([encoded_loc], verbose=0)[0]
 
     def eval_one_class(self, latitude, longitude, class_of_interest):
         """Evalutes the model for a single class and multiple locations

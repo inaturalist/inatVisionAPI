@@ -8,7 +8,6 @@ import json
 from flask import Flask, request, render_template
 from web_forms import ImageForm
 from inat_inferrer import InatInferrer
-from model_scoring import ModelScoring
 
 
 class InatVisionAPI:
@@ -41,6 +40,7 @@ class InatVisionAPI:
             lng = form.lng.data
             file_path = None
             image_uuid = None
+            iconic_taxon_id = None
             if observation_id:
                 image_uuid = "downloaded-obs-" + observation_id
                 file_path, lat, lng, iconic_taxon_id = self.download_observation(
@@ -48,67 +48,95 @@ class InatVisionAPI:
             else:
                 image_uuid = str(uuid.uuid4())
                 file_path = self.process_upload(form.image.data, image_uuid)
-                iconic_taxon_id = None
+                if form.taxon_id.data and form.taxon_id.data.isdigit():
+                    iconic_taxon_id = int(form.taxon_id.data)
             if file_path is None:
                 return render_template("home.html")
 
-            image = self.inferrer.prepare_image_for_inference(file_path, image_uuid)
-            scores = self.score_image(image, lat, lng, iconic_taxon_id, geomodel)
+            scores = self.score_image(form, file_path, lat, lng, iconic_taxon_id, geomodel)
             self.write_logstash(image_uuid, file_path, request_start_datetime, request_start_time)
             return scores
         else:
             return render_template("home.html")
 
-    def score_image(self, image, lat, lng, iconic_taxon_id, geomodel):
-        # Vision
-        vision_start_time = time.time()
-        vision_scores = self.inferrer.vision_predict(image, iconic_taxon_id)
-        vision_total_time = time.time() - vision_start_time
-        print("Vision Time: %0.2fms" % (vision_total_time * 1000.))
+    def score_image(self, form, file_path, lat, lng, iconic_taxon_id, geomodel):
+        score_without_geo = (form.score_without_geo.data == "true")
+        filter_taxon = self.inferrer.lookup_taxon(iconic_taxon_id)
+        leaf_scores = self.inferrer.predictions_for_image(
+            file_path, lat, lng, filter_taxon, score_without_geo, debug=True
+        )
 
-        if geomodel != "true":
-            top_x = dict(sorted(
-                vision_scores.items(), key=lambda x: x[1], reverse=True)[:100])
-            to_return = {}
-            for index, arg in enumerate(top_x):
-                to_return[arg] = round(vision_scores[arg] * 100, 6)
-            return to_return
+        if form.aggregated.data == "true":
+            aggregated_results = self.inferrer.aggregate_results(leaf_scores, filter_taxon,
+                                                                 score_without_geo, debug=True)
+            columns_to_return = [
+                "aggregated_combined_score",
+                "aggregated_geo_score",
+                "taxon_id",
+                "name",
+                "aggregated_vision_score",
+                "aggregated_geo_threshold"
+            ]
+            column_mapping = {
+                "taxon_id": "id",
+                "aggregated_combined_score": "combined_score",
+                "aggregated_geo_score": "geo_score",
+                "aggregated_vision_score": "vision_score",
+                "aggregated_geo_threshold": "geo_threshold"
+            }
 
-        # Geo
-        geo_start_time = time.time()
-        geo_scores = self.inferrer.geo_model_predict(lat, lng, iconic_taxon_id)
-        geo_total_time = time.time() - geo_start_time
-        print("GeoTime: %0.2fms" % (geo_total_time * 1000.))
+            no_geo_scores = (leaf_scores["geo_score"].max() == 0)
 
-        # Scoring
-        scoring_start_time = time.time()
-        combined_scores = ModelScoring.combine_vision_and_geo_scores(
-            vision_scores, geo_scores,
-            self.inferrer.config["geo_min"] if "geo_min" in self.inferrer.config else 0)
+            # set a cutoff where branches whose combined scores are below the threshold are ignored
+            # TODO: this threshold is completely arbitrary and needs testing
+            aggregated_results = aggregated_results.query("aggregated_combined_score > 0.01")
 
-        # results.aggregate_scores()
-        scoring_total_time = time.time() - scoring_start_time
-        print("Score Time: %0.2fms" % (scoring_total_time * 1000.))
+            # after setting a cutoff, get the parent IDs of the remaining taxa
+            parent_taxon_ids = aggregated_results["parent_taxon_id"].values  # noqa: F841
+            # the leaves of the pruned taxonomy (not leaves of the original taxonomy), are the
+            # taxa who are not parents of any remaining taxa
+            leaf_results = aggregated_results.query("taxon_id not in @parent_taxon_ids")
 
-        top_x = dict(sorted(
-            combined_scores.items(), key=lambda x: x[1], reverse=True)[:100])
-        to_return = []
-        for index, arg in enumerate(top_x):
-            geo_score = geo_scores[arg] if arg in geo_scores else 0.0000000001
-            to_return.append({
-                "combined_score": round(combined_scores[arg] * 100, 6),
-                "vision_score": round(vision_scores[arg] * 100, 6),
-                "geo_score": round(geo_score * 100, 6),
-                "id": self.inferrer.taxonomy.taxa[arg].id,
-                "name": self.inferrer.taxonomy.taxa[arg].name,
-            })
-        if "tf_elev_thresholds" in self.inferrer.config:
-            for data in to_return:
-                data["geo_threshold"] = self.inferrer.geo_threshold(data["id"])
+            leaf_results = leaf_results.sort_values("aggregated_combined_score", ascending=False).head(100)
+            score_columns = ["aggregated_combined_score", "aggregated_geo_score",
+                             "aggregated_vision_score", "aggregated_geo_threshold"]
+            leaf_results[score_columns] = leaf_results[score_columns].multiply(100, axis="index")
+            final_results = leaf_results[columns_to_return].rename(columns=column_mapping)
+        else:
+            no_geo_scores = (leaf_scores["geo_score"].max() == 0)
+            top_combined_score = leaf_scores.sort_values("combined_score", ascending=False).head(1)["combined_score"].values[0]
+            # set a cutoff so results whose combined scores are
+            # much lower than the best score are not returned
+            leaf_scores = leaf_scores.query(f'combined_score > {top_combined_score * 0.001}')
 
-        total_time = time.time() - vision_start_time
-        print("Total: %0.2fms" % (total_time * 1000.))
-        return to_return
+            top100 = leaf_scores.sort_values("combined_score", ascending=False).head(100)
+            score_columns = ["combined_score", "geo_score", "normalized_vision_score", "geo_threshold"]
+            top100[score_columns] = top100[score_columns].multiply(100, axis="index")
+
+            # legacy dict response
+            if geomodel != "true":
+                top_taxon_combined_scores = top100[
+                    ["taxon_id", "combined_score"]
+                ].to_dict(orient="records")
+                return {x["taxon_id"]: x["combined_score"] for x in top_taxon_combined_scores}
+
+            # new array response
+            columns_to_return = [
+                "combined_score",
+                "geo_score",
+                "taxon_id",
+                "name",
+                "normalized_vision_score",
+                "geo_threshold"
+            ]
+            column_mapping = {
+                "taxon_id": "id",
+                "normalized_vision_score": "vision_score"
+            }
+            final_results = top100[columns_to_return].rename(columns=column_mapping)
+
+        print(final_results[["id", "name", "vision_score", "geo_score", "combined_score", "geo_threshold"]])
+        return final_results.to_dict(orient="records")
 
     def process_upload(self, form_image_data, image_uuid):
         if form_image_data is None:
