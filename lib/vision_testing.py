@@ -10,7 +10,6 @@ from statistics import mean
 from PIL import Image
 from lib.test_observation import TestObservation
 from lib.inat_inferrer import InatInferrer
-from lib.model_scoring import ModelScoring
 
 
 class VisionTesting:
@@ -89,12 +88,6 @@ class VisionTesting:
         top_x = self.top_x(x, scores)
         return round((top_x / count) * 100, 2)
 
-    # sort results by score (x[1]) descending and return the first x results
-    def top_x_results(self, results, x):
-        top_x = dict(sorted(
-            results.items(), key=lambda x: x[1], reverse=True)[:x])
-        return top_x
-
     def print_scores(self):
         for index, inferrer in self.inferrers.items():
             all_metrics = {}
@@ -145,13 +138,16 @@ class VisionTesting:
     def assess_top_results(self, observation, top_results):
         match_index = None
         distance_scores = []
-        for index, key in enumerate(top_results):
-            if int(key) == int(observation.taxon_id):
+        for index, row in top_results.reset_index(drop=True).iterrows():
+            if row["taxon_id"] == int(observation.taxon_id):
                 match_index = index
-                # the taxa match, so the taxon distance score is 1
-                distance_scores.append(1)
-                break
-            elif index < 10:
+
+            if index < 10:
+                if row["taxon_id"] == int(observation.taxon_id):
+                    # the taxa match, so the taxon distance score is 1
+                    distance_scores.append(1)
+                    break
+
                 # if this is a top 10 result but not a match, append to taxon_scores
                 # some measure of how far away this taxon is from the expected correct taxon using
                 # (1 - [index of match in reversed target ancestry]/[lenth of target ancestry])
@@ -161,7 +157,7 @@ class VisionTesting:
                 # So the taxon score will be (1 - (3/8))^2, or (.625)^2, or 0.3090625
                 # NOTE: This is experimental and needs testing
                 try:
-                    taxon_match_index = observation.taxon_ancestry[::-1].index(key)
+                    taxon_match_index = observation.taxon_ancestry[::-1].index(row["taxon_id"])
                 except ValueError:
                     taxon_match_index = None
                 if taxon_match_index:
@@ -178,47 +174,43 @@ class VisionTesting:
             return False
         if observation.lat == '' or observation.lng == '':
             return False
-        try:
-            image = self.prepare_image_for_inference(cache_path)
-        except Exception as e:
-            print(f'\nObservation: {observation.observation_id} has a bad image')
-            return False
 
-        if observation.iconic_taxon_id == "" or self.cmd_args["filter_iconic"] is False:
-            iconic_taxon_id = None
-        else:
+        iconic_taxon_id = None
+        if observation.iconic_taxon_id != "" and self.cmd_args["filter_iconic"] is not False:
             iconic_taxon_id = int(observation.iconic_taxon_id)
-        # calculate vision scores
+
+
         inferrer_scores = {}
         for index, inferrer in self.inferrers.items():
-            inferrer_scores[index] = {}
-            inferrer_scores[index]["vision"] = inferrer.vision_inferrer.process_image(
-                image, iconic_taxon_id, None)
-
-            # calculate geo scores
-            if inferrer.geo_model and self.cmd_args["geo"]:
-                geo_scores = inferrer.geo_model_predict(
-                    observation.lat, observation.lng, iconic_taxon_id)
-                inferrer_scores[index]["combined"] = ModelScoring.combine_vision_and_geo_scores(
-                    inferrer_scores[index]["vision"],
-                    geo_scores,
-                    inferrer.config["geo_min"] if "geo_min" in inferrer.config else 0)
-            else:
-                inferrer_scores[index]["combined"] = {}
+            lat = None
+            lng = None
+            filter_taxon = inferrer.lookup_taxon(iconic_taxon_id)
+            if inferrer.geo_elevation_model and self.cmd_args["geo"]:
+                lat = observation.lat
+                lng = observation.lng
+            try:
+                inferrer_scores[index] = inferrer.predictions_for_image(
+                    cache_path, lat, lng, filter_taxon
+                )
+            except Exception as e:
+                print(e)
+                print(f'\nError scoring observation {observation.observation_id}')
+                return False
         return inferrer_scores
 
     def ancestor_distance_scores(self, observation, inferrer, results):
         reversed_target_ancestors = observation.taxon_ancestry[::-1]
         ancestor_distance_scores = []
         # for each top result
-        for results_key in results:
-            result_ancestors = inferrer.taxonomy.taxa[results_key].ancestors
-            result_ancestors.append(results_key)
+        for index, row in results.iterrows():
+            result_ancestors = inferrer.taxonomy.df.query(
+                f'left <= {row["left"]} and right >= {row["right"]}'
+            ).sort_values("left", ascending=False).reset_index(drop=True)
             result_ancestor_match_index = None
             # find the most specific taxon in the result's taxon's ancestry that is also in
             # the target taxon's ancestry
-            for ancestor_index, target_ancestor_id in enumerate(result_ancestors[::-1]):
-                if target_ancestor_id in reversed_target_ancestors:
+            for ancestor_index, ancestor_row in result_ancestors.iterrows():
+                if ancestor_row["taxon_id"] in reversed_target_ancestors:
                     result_ancestor_match_index = ancestor_index
                     break
             if result_ancestor_match_index is None:
@@ -232,17 +224,19 @@ class VisionTesting:
         combined_indices = set()
         for index, results in inferrer_scores.items():
             # only look at the top 100 results for this testing
-            top100_vision = self.top_x_results(results["vision"], 100)
-            top100_combined = self.top_x_results(results["combined"], 100)
+
+            top100_vision = results.sort_values("vision_score", ascending=False).head(100)
+            top100_combined = results.sort_values("combined_score", ascending=False).head(100)
+
             vision_index, vision_taxon_distance_scores = self.assess_top_results(
                 observation, top100_vision)
             combined_index, combined_taxon_distance_scores = self.assess_top_results(
                 observation, top100_combined)
 
             vision_ancestor_distance_scores = self.ancestor_distance_scores(
-                observation, self.inferrers[index], list(top100_vision)[:10])
+                observation, self.inferrers[index], top100_vision.head(10))
             combined_ancestor_distance_scores = self.ancestor_distance_scores(
-                observation, self.inferrers[index], list(top100_combined)[:10])
+                observation, self.inferrers[index], top100_combined.head(10))
 
             self.scores["sum_ancestor_distance_scores"]["vision"][index].append(
                 sum(vision_ancestor_distance_scores))

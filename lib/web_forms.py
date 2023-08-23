@@ -10,5 +10,8 @@ class ImageForm(FlaskForm):
     ])
     lat = StringField("lat")
     lng = StringField("lng")
+    taxon_id = StringField("taxon_id")
     geomodel = StringField("geomodel")
+    aggregated = StringField("aggregated")
+    score_without_geo = StringField("score_without_geo")
     format = StringField("format")

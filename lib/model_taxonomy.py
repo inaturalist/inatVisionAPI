@@ -11,7 +11,7 @@ class ModelTaxonomy:
     def load_mapping(self, path):
         self.node_key_to_leaf_class_id = {}
         self.leaf_class_to_taxon = {}
-        # there is no taxon with ID 0, but roots of the taxonomy with have a parent ID of 0,
+        # there is no taxon with ID 0, but roots of the taxonomy have a parent ID of 0,
         # so create a fake taxon of Life to represent the root of the entire tree
         self.taxa = {0: Taxon({"name": "Life", "depth": 0})}
         self.taxon_children = {}
