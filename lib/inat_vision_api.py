@@ -24,7 +24,6 @@ class InatVisionAPI:
         self.inferrer = InatInferrer(config)
 
     def h3_04_route(self):
-        start_time = time.time()
         if "taxon_id" in request.args:
             taxon_id = request.args["taxon_id"]
         else:
@@ -48,7 +47,6 @@ class InatVisionAPI:
             bounds = [swlat, swlng, nelat, nelng]
 
         results_dict = self.inferrer.h3_04_geo_results_for_taxon(taxon_id, bounds)
-        print("h3_04_route Time: %0.2fms" % ((time.time() - start_time) * 1000.))
         return InatVisionAPI.round_floats(results_dict, 5)
 
     def index_route(self):
@@ -92,12 +90,12 @@ class InatVisionAPI:
         score_without_geo = (form.score_without_geo.data == "true")
         filter_taxon = self.inferrer.lookup_taxon(iconic_taxon_id)
         leaf_scores = self.inferrer.predictions_for_image(
-            file_path, lat, lng, filter_taxon, score_without_geo, debug=True
+            file_path, lat, lng, filter_taxon, score_without_geo
         )
 
         if form.aggregated.data == "true":
             aggregated_results = self.inferrer.aggregate_results(leaf_scores, filter_taxon,
-                                                                 score_without_geo, debug=True)
+                                                                 score_without_geo)
             columns_to_return = [
                 "aggregated_combined_score",
                 "aggregated_geo_score",
@@ -164,7 +162,6 @@ class InatVisionAPI:
             }
             final_results = top100[columns_to_return].rename(columns=column_mapping)
 
-        print(final_results[["id", "name", "vision_score", "geo_score", "combined_score", "geo_threshold"]])
         return final_results.to_dict(orient="records")
 
     def process_upload(self, form_image_data, image_uuid):
