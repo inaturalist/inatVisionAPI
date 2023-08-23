@@ -2,8 +2,14 @@ import time
 import magic
 import tensorflow as tf
 import pandas as pd
-import numpy as np
 import h3
+import h3pandas  # noqa: F401
+import math
+import os
+import tifffile
+import numpy as np
+import geopandas as gpd
+from shapely.geometry import Polygon
 from PIL import Image
 from lib.tf_gp_elev_model import TFGeoPriorModelElev
 from lib.vision_inferrer import VisionInferrer
@@ -12,11 +18,12 @@ from lib.model_taxonomy_dataframe import ModelTaxonomyDataframe
 # TODO: better way to address the SettingWithCopyWarning warning?
 pd.options.mode.chained_assignment = None
 
+MINIMUM_GEO_SCORE = 0.005
+
 
 class InatInferrer:
 
     def __init__(self, config):
-        self.config = config
         self.setup_taxonomy(config)
         self.setup_vision_model(config)
         self.setup_elevation_dataframe(config)
@@ -36,10 +43,36 @@ class InatInferrer:
         if "elevation_h3_r4" in config:
             self.geo_elevation_cells = pd.read_csv(config["elevation_h3_r4"]). \
                 sort_values("h3_04").set_index("h3_04").sort_index()
+            # add centroid lat/lng
+            self.geo_elevation_cells = self.geo_elevation_cells.h3.h3_to_geo()
+            self.geo_elevation_cells["lng"] = self.geo_elevation_cells["geometry"].x
+            self.geo_elevation_cells["lat"] = self.geo_elevation_cells["geometry"].y
+            self.geo_elevation_cells.pop("geometry")
+
+    def setup_elevation_dataframe_from_worldclim(self, config, resolution):
+        # preventing from processing at too high a resolution
+        if resolution > 5:
+            return
+        if "wc2.1_5m_elev_2.tif" in config:
+            elevation_file = os.path.join(config["wc2.1_5m_elev_2.tif"])
+            im = tifffile.imread(elevation_file)
+            im_df = pd.DataFrame(im)
+            im_df.index = np.linspace(90, -90, 2160)
+            im_df.columns = np.linspace(-180, 180, 4320)
+            im_df = im_df.reset_index()
+            im_df = im_df.melt(id_vars=["index"])
+            im_df.columns = ["lat", "lng", "elevation"]
+            elev_dfh3 = im_df.h3.geo_to_h3(resolution)
+            elev_dfh3 = elev_dfh3.drop(columns=["lng", "lat"]).groupby(f'h3_0{resolution}').mean()
 
     def setup_geo_model(self, config):
         if "tf_geo_elevation_model_path" in config and self.geo_elevation_cells is not None:
             self.geo_elevation_model = TFGeoPriorModelElev(config["tf_geo_elevation_model_path"])
+            self.geo_model_features = self.geo_elevation_model.features_for_one_class_elevation(
+                latitude=list(self.geo_elevation_cells.lat),
+                longitude=list(self.geo_elevation_cells.lng),
+                elevation=list(self.geo_elevation_cells.elevation)
+            )
 
     def prepare_image_for_inference(self, file_path):
         mime_type = magic.from_file(file_path, mime=True)
@@ -119,7 +152,7 @@ class InatInferrer:
         leaf_scores["geo_score"] = 0 if no_geo_scores else raw_geo_scores
         # set a lower limit for geo scores if there are any
         leaf_scores["normalized_geo_score"] = 0 if no_geo_scores \
-            else leaf_scores["geo_score"].clip(self.config["geo_min"], None)
+            else leaf_scores["geo_score"].clip(MINIMUM_GEO_SCORE, None)
 
         # if filtering by a taxon, restrict results to that taxon and its descendants
         if filter_taxon is not None:
@@ -234,14 +267,69 @@ class InatInferrer:
             all_node_scores["aggregated_combined_score"] = all_node_scores["aggregated_vision_score"] * \
                 all_node_scores["aggregated_geo_score"]
 
+        # calculate a normalized combined score so all values add to 1, to be used for thresholding
+        sum_of_root_node_aggregated_combined_scores = all_node_scores.query(
+            "parent_taxon_id.isnull()")["aggregated_combined_score"].sum()
+        all_node_scores["normalized_aggregated_combined_score"] = all_node_scores[
+            "aggregated_combined_score"] / sum_of_root_node_aggregated_combined_scores
+
         if debug:
             print("Aggregation Time: %0.2fms" % ((time.time() - start_time) * 1000.))
-            thresholded_results = all_node_scores.query("aggregated_combined_score > 0.01")
+            thresholded_results = all_node_scores.query("normalized_aggregated_combined_score > 0.05")
             print("\nTree of aggregated results:")
             ModelTaxonomyDataframe.print(thresholded_results, display_taxon_lambda=(
                 lambda row: f'{row.name}    [' +
                             f'V:{round(row.aggregated_vision_score, 4)}, ' +
                             f'G:{round(row.aggregated_geo_score, 4)}, ' +
-                            f'C:{round(row.aggregated_combined_score, 4)}]'))
+                            f'C:{round(row.aggregated_combined_score, 4)}, ' +
+                            f'NC:{round(row.normalized_aggregated_combined_score, 4)}]'))
             print("")
         return all_node_scores
+
+    def h3_04_geo_results_for_taxon(self, taxon_id, bounds=[]):
+        if (self.geo_elevation_cells is None) or (self.geo_elevation_model is None):
+            return
+        try:
+            taxon = self.taxonomy.df.loc[taxon_id]
+        except Exception as e:
+            print(f'taxon `{taxon_id}` does not exist in the taxonomy')
+            raise e
+        if math.isnan(taxon["leaf_class_id"]):
+            return
+
+        geo_scores = self.geo_elevation_model.eval_one_class_elevation_from_features(
+            self.geo_model_features, int(taxon["leaf_class_id"]))
+        geo_score_cells = self.geo_elevation_cells.copy()
+        geo_score_cells["geo_score"] = tf.squeeze(geo_scores).numpy()
+        geo_score_cells = geo_score_cells.query("geo_score > 0.001")
+
+        if bounds:
+            min = geo_score_cells["geo_score"].min()
+            max = geo_score_cells["geo_score"].max()
+            # this is querying on the centroid, but cells just outside the bounds may have a
+            # centroid outside the bounds while part of the polygon is within the bounds. Add
+            # a small buffer to ensure this returns any cell whose polygon is
+            # even partially within the bounds
+            buffer = 0.6
+
+            # similarly, the centroid may be on the other side of the antimedirian, so lookup
+            # cells that might be just over the antimeridian on either side
+            antimedirian_condition = ""
+            if bounds[1] < -179:
+                antimedirian_condition = "or (lng > 179)"
+            elif bounds[3] > 179:
+                antimedirian_condition = "or (lng < -179)"
+
+            # query for cells wtihin the buffered bounds, and potentially
+            # on the other side of the antimeridian
+            query = f'lat >= {bounds[0] - buffer} and lat <= {bounds[2] + buffer} and ' + \
+                f' ((lng >= {bounds[1] - buffer} and lng <= {bounds[3] + buffer})' + \
+                f' {antimedirian_condition})'
+            geo_score_cells = geo_score_cells.query(query)
+
+            # perform a log transform on the scores based on the min/max score for the unbounded set
+            geo_score_cells["geo_score"] = \
+                (np.log10(geo_score_cells["geo_score"]) - math.log10(min)) / \
+                (math.log10(max) - math.log10(min))
+
+        return dict(zip(geo_score_cells.index.astype(str), geo_score_cells["geo_score"]))

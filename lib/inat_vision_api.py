@@ -17,11 +17,39 @@ class InatVisionAPI:
         self.app = Flask(__name__)
         self.app.secret_key = config["app_secret"]
         self.upload_folder = "static/"
-        self.app.add_url_rule(
-            "/", "index", self.index_route, methods=["GET", "POST"])
+        self.app.add_url_rule("/", "index", self.index_route, methods=["GET", "POST"])
+        self.app.add_url_rule("/h3_04", "h3_04", self.h3_04_route, methods=["GET"])
 
     def setup_inferrer(self, config):
         self.inferrer = InatInferrer(config)
+
+    def h3_04_route(self):
+        start_time = time.time()
+        if "taxon_id" in request.args:
+            taxon_id = request.args["taxon_id"]
+        else:
+            return "taxon_id required", 422
+        if not taxon_id.isdigit():
+            return "taxon_id must be an integer", 422
+
+        taxon_id = int(taxon_id)
+        if float(taxon_id) not in self.inferrer.taxonomy.leaf_df["taxon_id"].values:
+            return f'Unknown taxon_id {taxon_id}', 422
+
+        bounds = []
+        if "swlat" in request.args:
+            try:
+                swlat = float(request.args["swlat"])
+                swlng = float(request.args["swlng"])
+                nelat = float(request.args["nelat"])
+                nelng = float(request.args["nelng"])
+            except ValueError:
+                return "bounds must be floats", 422
+            bounds = [swlat, swlng, nelat, nelng]
+
+        results_dict = self.inferrer.h3_04_geo_results_for_taxon(taxon_id, bounds)
+        print("h3_04_route Time: %0.2fms" % ((time.time() - start_time) * 1000.))
+        return InatVisionAPI.round_floats(results_dict, 5)
 
     def index_route(self):
         form = ImageForm()
@@ -54,7 +82,8 @@ class InatVisionAPI:
                 return render_template("home.html")
 
             scores = self.score_image(form, file_path, lat, lng, iconic_taxon_id, geomodel)
-            self.write_logstash(image_uuid, file_path, request_start_datetime, request_start_time)
+            InatVisionAPI.write_logstash(
+                image_uuid, file_path, request_start_datetime, request_start_time)
             return scores
         else:
             return render_template("home.html")
@@ -89,7 +118,7 @@ class InatVisionAPI:
 
             # set a cutoff where branches whose combined scores are below the threshold are ignored
             # TODO: this threshold is completely arbitrary and needs testing
-            aggregated_results = aggregated_results.query("aggregated_combined_score > 0.01")
+            aggregated_results = aggregated_results.query("normalized_aggregated_combined_score > 0.05")
 
             # after setting a cutoff, get the parent IDs of the remaining taxa
             parent_taxon_ids = aggregated_results["parent_taxon_id"].values  # noqa: F841
@@ -165,7 +194,8 @@ class InatVisionAPI:
         # return the path to the cached image, coordinates, and iconic taxon
         return cache_path, latlng[0], latlng[1], data["results"][0]["taxon"]["iconic_taxon_id"]
 
-    def write_logstash(self, image_uuid, file_path, request_start_datetime, request_start_time):
+    @staticmethod
+    def write_logstash(image_uuid, file_path, request_start_datetime, request_start_time):
         request_end_time = time.time()
         request_time = round((request_end_time - request_start_time) * 1000, 6)
         logstash_log = open('log/logstash.log', 'a')
@@ -177,3 +207,13 @@ class InatVisionAPI:
         json.dump(log_data, logstash_log)
         logstash_log.write("\n")
         logstash_log.close()
+
+    @staticmethod
+    def round_floats(o, sig):
+        if isinstance(o, float):
+            return round(o, sig)
+        if isinstance(o, dict):
+            return {k: InatVisionAPI.round_floats(v, sig) for k, v in o.items()}
+        if isinstance(o, (list, tuple)):
+            return [InatVisionAPI.round_floats(x, sig) for x in o]
+        return o
