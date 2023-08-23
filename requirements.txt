@@ -19,3 +19,4 @@ werkzeug
 WTForms
 flake8
 h3
+h3pandas
