@@ -8,8 +8,6 @@ import math
 import os
 import tifffile
 import numpy as np
-import geopandas as gpd
-from shapely.geometry import Polygon
 from PIL import Image
 from lib.tf_gp_elev_model import TFGeoPriorModelElev
 from lib.vision_inferrer import VisionInferrer
@@ -24,6 +22,7 @@ MINIMUM_GEO_SCORE = 0.005
 class InatInferrer:
 
     def __init__(self, config):
+        self.config = config
         self.setup_taxonomy(config)
         self.setup_vision_model(config)
         self.setup_elevation_dataframe(config)

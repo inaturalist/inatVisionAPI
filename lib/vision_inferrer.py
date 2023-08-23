@@ -50,4 +50,4 @@ class VisionInferrer:
     # given an image object (usually coming from prepare_image_for_inference),
     # calculate vision results for the image
     def process_image(self, image):
-        return self.vision_model(tf.convert_to_tensor(image))[0]
+        return self.vision_model(tf.convert_to_tensor(image), training=False)[0]
