@@ -19,34 +19,39 @@ class InatVisionAPI:
         self.upload_folder = "static/"
         self.app.add_url_rule("/", "index", self.index_route, methods=["GET", "POST"])
         self.app.add_url_rule("/h3_04", "h3_04", self.h3_04_route, methods=["GET"])
+        self.app.add_url_rule("/h3_04_taxon_range", "h3_04_taxon_range",
+                              self.h3_04_taxon_range_route, methods=["GET"])
+        self.app.add_url_rule("/h3_04_taxon_range_comparison", "h3_04_taxon_range_comparison",
+                              self.h3_04_taxon_range_comparison_route, methods=["GET"])
 
     def setup_inferrer(self, config):
         self.inferrer = InatInferrer(config)
 
     def h3_04_route(self):
-        if "taxon_id" in request.args:
-            taxon_id = request.args["taxon_id"]
-        else:
-            return "taxon_id required", 422
-        if not taxon_id.isdigit():
-            return "taxon_id must be an integer", 422
+        return self.h3_04_default_route(self.inferrer.h3_04_geo_results_for_taxon)
 
-        taxon_id = int(taxon_id)
-        if float(taxon_id) not in self.inferrer.taxonomy.leaf_df["taxon_id"].values:
+    def h3_04_taxon_range_route(self):
+        if "taxon_ranges_path" not in self.inferrer.config:
+            return "taxon range data unavilable", 422
+        return self.h3_04_default_route(self.inferrer.h3_04_taxon_range)
+
+    def h3_04_taxon_range_comparison_route(self):
+        if "taxon_ranges_path" not in self.inferrer.config:
+            return "taxon range data unavilable", 422
+        return self.h3_04_default_route(self.inferrer.h3_04_taxon_range_comparison)
+
+    def h3_04_default_route(self, h3_04_method):
+        taxon_id, error_message, error_code = self.valid_leaf_taxon_id_for_request(request)
+        if error_message:
+            return error_message, error_code
+
+        bounds, error_message, error_code = self.valid_bounds_for_request(request)
+        if error_message:
+            return error_message, error_code
+
+        results_dict = h3_04_method(taxon_id, bounds)
+        if results_dict is None:
             return f'Unknown taxon_id {taxon_id}', 422
-
-        bounds = []
-        if "swlat" in request.args:
-            try:
-                swlat = float(request.args["swlat"])
-                swlng = float(request.args["swlng"])
-                nelat = float(request.args["nelat"])
-                nelng = float(request.args["nelng"])
-            except ValueError:
-                return "bounds must be floats", 422
-            bounds = [swlat, swlng, nelat, nelng]
-
-        results_dict = self.inferrer.h3_04_geo_results_for_taxon(taxon_id, bounds)
         return InatVisionAPI.round_floats(results_dict, 5)
 
     def index_route(self):
@@ -190,6 +195,32 @@ class InatVisionAPI:
         latlng = data["results"][0]["location"].split(",")
         # return the path to the cached image, coordinates, and iconic taxon
         return cache_path, latlng[0], latlng[1], data["results"][0]["taxon"]["iconic_taxon_id"]
+
+    def valid_leaf_taxon_id_for_request(self, request):
+        if "taxon_id" in request.args:
+            taxon_id = request.args["taxon_id"]
+        else:
+            return None, "taxon_id required", 422
+        if not taxon_id.isdigit():
+            return None, "taxon_id must be an integer", 422
+
+        taxon_id = int(taxon_id)
+        if float(taxon_id) not in self.inferrer.taxonomy.leaf_df["taxon_id"].values:
+            return None, f'Unknown taxon_id {taxon_id}', 422
+        return taxon_id, None, None
+
+    def valid_bounds_for_request(self, request):
+        bounds = []
+        if "swlat" in request.args:
+            try:
+                swlat = float(request.args["swlat"])
+                swlng = float(request.args["swlng"])
+                nelat = float(request.args["nelat"])
+                nelng = float(request.args["nelng"])
+            except ValueError:
+                return None, "bounds must be floats", 422
+            bounds = [swlat, swlng, nelat, nelng]
+        return bounds, None, None
 
     @staticmethod
     def write_logstash(image_uuid, file_path, request_start_datetime, request_start_time):

@@ -82,7 +82,6 @@ class ModelTestDataExporter:
         json_object = response.json()
         useable_rows = []
         for row in json_object["results"]:
-            print(row)
             if row["uuid"] in used_observations:
                 continue
 
@@ -122,7 +121,7 @@ class ModelTestDataExporter:
 
             if row["quality_grade"] == "casual" and not (row["community_taxon_id"] and row["community_taxon_id"] == row["taxon"]["id"]):
                 used_observations[row["uuid"]] = True
-                continue    
+                continue
 
             useable_rows.append(row)
             used_observations[row["uuid"]] = True

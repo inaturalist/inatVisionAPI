@@ -42,19 +42,14 @@ class InatInferrer:
         if "elevation_h3_r4" in config:
             self.geo_elevation_cells = pd.read_csv(config["elevation_h3_r4"]). \
                 sort_values("h3_04").set_index("h3_04").sort_index()
-            # add centroid lat/lng
-            self.geo_elevation_cells = self.geo_elevation_cells.h3.h3_to_geo()
-            self.geo_elevation_cells["lng"] = self.geo_elevation_cells["geometry"].x
-            self.geo_elevation_cells["lat"] = self.geo_elevation_cells["geometry"].y
-            self.geo_elevation_cells.pop("geometry")
+            self.geo_elevation_cells = InatInferrer.add_lat_lng_to_h3_geo_dataframe(self.geo_elevation_cells)
 
     def setup_elevation_dataframe_from_worldclim(self, config, resolution):
         # preventing from processing at too high a resolution
         if resolution > 5:
             return
         if "wc2.1_5m_elev_2.tif" in config:
-            elevation_file = os.path.join(config["wc2.1_5m_elev_2.tif"])
-            im = tifffile.imread(elevation_file)
+            im = tifffile.imread(config["wc2.1_5m_elev_2.tif"])
             im_df = pd.DataFrame(im)
             im_df.index = np.linspace(90, -90, 2160)
             im_df.columns = np.linspace(-180, 180, 4320)
@@ -285,7 +280,7 @@ class InatInferrer:
             print("")
         return all_node_scores
 
-    def h3_04_geo_results_for_taxon(self, taxon_id, bounds=[]):
+    def h3_04_geo_results_for_taxon(self, taxon_id, bounds=[], thresholded=False):
         if (self.geo_elevation_cells is None) or (self.geo_elevation_model is None):
             return
         try:
@@ -300,35 +295,75 @@ class InatInferrer:
             self.geo_model_features, int(taxon["leaf_class_id"]))
         geo_score_cells = self.geo_elevation_cells.copy()
         geo_score_cells["geo_score"] = tf.squeeze(geo_scores).numpy()
-        geo_score_cells = geo_score_cells.query("geo_score > 0.001")
+        if thresholded:
+            geo_score_cells = geo_score_cells.query(f'geo_score > {taxon["geo_threshold"]}')
+        else:
+            geo_score_cells = geo_score_cells.query("geo_score > 0.001")
 
         if bounds:
             min = geo_score_cells["geo_score"].min()
             max = geo_score_cells["geo_score"].max()
-            # this is querying on the centroid, but cells just outside the bounds may have a
-            # centroid outside the bounds while part of the polygon is within the bounds. Add
-            # a small buffer to ensure this returns any cell whose polygon is
-            # even partially within the bounds
-            buffer = 0.6
-
-            # similarly, the centroid may be on the other side of the antimedirian, so lookup
-            # cells that might be just over the antimeridian on either side
-            antimedirian_condition = ""
-            if bounds[1] < -179:
-                antimedirian_condition = "or (lng > 179)"
-            elif bounds[3] > 179:
-                antimedirian_condition = "or (lng < -179)"
-
-            # query for cells wtihin the buffered bounds, and potentially
-            # on the other side of the antimeridian
-            query = f'lat >= {bounds[0] - buffer} and lat <= {bounds[2] + buffer} and ' + \
-                f' ((lng >= {bounds[1] - buffer} and lng <= {bounds[3] + buffer})' + \
-                f' {antimedirian_condition})'
-            geo_score_cells = geo_score_cells.query(query)
-
+            geo_score_cells = InatInferrer.filter_geo_dataframe_by_bounds(geo_score_cells, bounds)
             # perform a log transform on the scores based on the min/max score for the unbounded set
             geo_score_cells["geo_score"] = \
                 (np.log10(geo_score_cells["geo_score"]) - math.log10(min)) / \
                 (math.log10(max) - math.log10(min))
 
         return dict(zip(geo_score_cells.index.astype(str), geo_score_cells["geo_score"]))
+
+    def h3_04_taxon_range(self, taxon_id, bounds=[]):
+        taxon_range_path = os.path.join(self.config["taxon_ranges_path"], f'{taxon_id}.csv')
+        if not os.path.exists(taxon_range_path):
+            return None
+        taxon_range_df = pd.read_csv(taxon_range_path, names=["h3_04"], header=None). \
+            sort_values("h3_04").set_index("h3_04").sort_index()
+        taxon_range_df = InatInferrer.add_lat_lng_to_h3_geo_dataframe(taxon_range_df)
+        if bounds:
+            taxon_range_df = InatInferrer.filter_geo_dataframe_by_bounds(taxon_range_df, bounds)
+        taxon_range_df["value"] = 1
+        return dict(zip(taxon_range_df.index.astype(str), taxon_range_df["value"]))
+
+    def h3_04_taxon_range_comparison(self, taxon_id, bounds=[]):
+        geomodel_results = self.h3_04_geo_results_for_taxon(taxon_id, bounds, True) or {}
+        taxon_range_results = self.h3_04_taxon_range(taxon_id, bounds) or {}
+        combined_results = {}
+        for cell_key in geomodel_results:
+            if cell_key in taxon_range_results:
+                combined_results[cell_key] = 0.5
+            else:
+                combined_results[cell_key] = 0
+        for cell_key in taxon_range_results:
+            if cell_key not in geomodel_results:
+                combined_results[cell_key] = 1
+        return combined_results
+
+    @staticmethod
+    def add_lat_lng_to_h3_geo_dataframe(geo_df):
+        geo_df = geo_df.h3.h3_to_geo()
+        geo_df["lng"] = geo_df["geometry"].x
+        geo_df["lat"] = geo_df["geometry"].y
+        geo_df.pop("geometry")
+        return geo_df
+
+    @staticmethod
+    def filter_geo_dataframe_by_bounds(geo_df, bounds):
+        # this is querying on the centroid, but cells just outside the bounds may have a
+        # centroid outside the bounds while part of the polygon is within the bounds. Add
+        # a small buffer to ensure this returns any cell whose polygon is
+        # even partially within the bounds
+        buffer = 0.6
+
+        # similarly, the centroid may be on the other side of the antimedirian, so lookup
+        # cells that might be just over the antimeridian on either side
+        antimedirian_condition = ""
+        if bounds[1] < -179:
+            antimedirian_condition = "or (lng > 179)"
+        elif bounds[3] > 179:
+            antimedirian_condition = "or (lng < -179)"
+
+        # query for cells wtihin the buffered bounds, and potentially
+        # on the other side of the antimeridian
+        query = f'lat >= {bounds[0] - buffer} and lat <= {bounds[2] + buffer} and ' + \
+            f' ((lng >= {bounds[1] - buffer} and lng <= {bounds[3] + buffer})' + \
+            f' {antimedirian_condition})'
+        return geo_df.query(query)
