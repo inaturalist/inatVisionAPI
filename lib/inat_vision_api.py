@@ -52,7 +52,7 @@ class InatVisionAPI:
         results_dict = h3_04_method(taxon_id, bounds)
         if results_dict is None:
             return f'Unknown taxon_id {taxon_id}', 422
-        return InatVisionAPI.round_floats(results_dict, 5)
+        return InatVisionAPI.round_floats(results_dict, 8)
 
     def index_route(self):
         form = ImageForm()

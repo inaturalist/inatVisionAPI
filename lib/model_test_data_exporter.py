@@ -34,7 +34,7 @@ class ModelTestDataExporter:
             parameter_string = "-".join(map(lambda index: f'{index}-{additional_parameters[index]}',
                                             additional_parameters))
             export_path += "-" + parameter_string
-        if self.cmd_args["filename_suffix"]:
+        if "filename_suffix" in self.cmd_args and self.cmd_args["filename_suffix"]:
             export_path += "-" + self.cmd_args["filename_suffix"]
         export_path += ".csv"
         self.generate_test_data(export_path, self.cmd_args["limit"], additional_parameters)
@@ -86,7 +86,8 @@ class ModelTestDataExporter:
                 continue
 
             # must have a taxon and observed_on_details
-            if not row["taxon"] or "observed_on_details" not in row or not row["observed_on_details"]:
+            if not row["taxon"] or "observed_on_details" not in row \
+               or not row["observed_on_details"] or not row["iconic_taxon_id"]:
                 used_observations[row["uuid"]] = True
                 continue
 
@@ -196,7 +197,7 @@ class ModelTestDataExporter:
 
         for key in files_to_generate:
             export_path = f'test-obs-{timestamp}-{key}'
-            if self.cmd_args["filename_suffix"]:
+            if "filename_suffix" in self.cmd_args and self.cmd_args["filename_suffix"]:
                 export_path += "-" + self.cmd_args["filename_suffix"]
             export_path += ".csv"
             self.generate_test_data(export_path, self.cmd_args["limit"], files_to_generate[key])
