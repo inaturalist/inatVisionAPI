@@ -49,7 +49,11 @@ class InatVisionAPI:
         if error_message:
             return error_message, error_code
 
-        results_dict = h3_04_method(taxon_id, bounds)
+        if h3_04_method == self.inferrer.h3_04_geo_results_for_taxon \
+           and "thresholded" in request.args and request.args["thresholded"] == "true":
+            results_dict = h3_04_method(taxon_id, bounds, thresholded=True)
+        else:
+            results_dict = h3_04_method(taxon_id, bounds)
         if results_dict is None:
             return f'Unknown taxon_id {taxon_id}', 422
         return InatVisionAPI.round_floats(results_dict, 8)

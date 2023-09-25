@@ -298,7 +298,11 @@ class InatInferrer:
         if thresholded:
             geo_score_cells = geo_score_cells.query(f'geo_score > {taxon["geo_threshold"]}')
         else:
-            geo_score_cells = geo_score_cells.query("geo_score > 0.001")
+            # return scores more than 10% of the taxon threshold, or more than 0.0001, whichever
+            # is smaller. This reduces data needed to be redendered client-side for the Data Layer
+            # mapping approach, and maybe can be removed once switching to map tiles
+            lower_bound_score = np.array([0.0001, taxon["geo_threshold"] / 10]).min()
+            geo_score_cells = geo_score_cells.query(f'geo_score > {lower_bound_score}')
 
         if bounds:
             min = geo_score_cells["geo_score"].min()
