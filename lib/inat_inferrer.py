@@ -31,13 +31,15 @@ class InatInferrer:
 
     def setup_taxonomy(self, config):
         self.taxonomy = ModelTaxonomyDataframe(
-            config["taxonomy_path"], config["tf_elev_thresholds"]
+            config["taxonomy_path"],
+            config["tf_elev_thresholds"] if "tf_elev_thresholds" in config else None
         )
 
     def setup_vision_model(self, config):
         self.vision_inferrer = VisionInferrer(config["vision_model_path"], self.taxonomy)
 
     def setup_elevation_dataframe(self, config):
+        self.geo_elevation_cells = None
         # load elevation data stored at H3 resolution 4
         if "elevation_h3_r4" in config:
             self.geo_elevation_cells = pd.read_csv(config["elevation_h3_r4"]). \
@@ -60,6 +62,8 @@ class InatInferrer:
             elev_dfh3 = elev_dfh3.drop(columns=["lng", "lat"]).groupby(f'h3_0{resolution}').mean()
 
     def setup_geo_model(self, config):
+        self.geo_elevation_model = None
+        self.geo_model_features = None
         if "tf_geo_elevation_model_path" in config and self.geo_elevation_cells is not None:
             self.geo_elevation_model = TFGeoPriorModelElev(config["tf_geo_elevation_model_path"])
             self.geo_model_features = self.geo_elevation_model.features_for_one_class_elevation(
@@ -280,7 +284,7 @@ class InatInferrer:
             print("")
         return all_node_scores
 
-    def h3_04_geo_results_for_taxon(self, taxon_id, bounds=[], thresholded=False):
+    def h3_04_geo_results_for_taxon(self, taxon_id, bounds=[], thresholded=False, raw_results=False):
         if (self.geo_elevation_cells is None) or (self.geo_elevation_model is None):
             return
         try:
@@ -313,6 +317,8 @@ class InatInferrer:
                 (np.log10(geo_score_cells["geo_score"]) - math.log10(min)) / \
                 (math.log10(max) - math.log10(min))
 
+        if raw_results:
+            return geo_score_cells
         return dict(zip(geo_score_cells.index.astype(str), geo_score_cells["geo_score"]))
 
     def h3_04_taxon_range(self, taxon_id, bounds=[]):
@@ -328,7 +334,7 @@ class InatInferrer:
         return dict(zip(taxon_range_df.index.astype(str), taxon_range_df["value"]))
 
     def h3_04_taxon_range_comparison(self, taxon_id, bounds=[]):
-        geomodel_results = self.h3_04_geo_results_for_taxon(taxon_id, bounds, True) or {}
+        geomodel_results = self.h3_04_geo_results_for_taxon(taxon_id, bounds, thresholded=True) or {}
         taxon_range_results = self.h3_04_taxon_range(taxon_id, bounds) or {}
         combined_results = {}
         for cell_key in geomodel_results:
@@ -340,6 +346,18 @@ class InatInferrer:
             if cell_key not in geomodel_results:
                 combined_results[cell_key] = 1
         return combined_results
+
+    def h3_04_bounds(self, taxon_id):
+        geomodel_results = self.h3_04_geo_results_for_taxon(
+            taxon_id, bounds=None, thresholded=True, raw_results=True)
+        if geomodel_results is None:
+            return
+        return {
+            "swlat": geomodel_results["lat"].min(),
+            "swlng": geomodel_results["lng"].min(),
+            "nelat": geomodel_results["lat"].max(),
+            "nelng": geomodel_results["lng"].max()
+        }
 
     @staticmethod
     def add_lat_lng_to_h3_geo_dataframe(geo_df):

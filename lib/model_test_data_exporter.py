@@ -87,7 +87,8 @@ class ModelTestDataExporter:
 
             # must have a taxon and observed_on_details
             if not row["taxon"] or "observed_on_details" not in row \
-               or not row["observed_on_details"] or not row["iconic_taxon_id"]:
+               or not row["observed_on_details"] or "taxon" not in row \
+               or "iconic_taxon_id" not in row["taxon"] or not row["taxon"]["iconic_taxon_id"]:
                 used_observations[row["uuid"]] = True
                 continue
 

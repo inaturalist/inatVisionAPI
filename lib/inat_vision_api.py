@@ -23,6 +23,8 @@ class InatVisionAPI:
                               self.h3_04_taxon_range_route, methods=["GET"])
         self.app.add_url_rule("/h3_04_taxon_range_comparison", "h3_04_taxon_range_comparison",
                               self.h3_04_taxon_range_comparison_route, methods=["GET"])
+        self.app.add_url_rule("/h3_04_bounds", "h3_04_bounds",
+                              self.h3_04_bounds_route, methods=["GET"])
 
     def setup_inferrer(self, config):
         self.inferrer = InatInferrer(config)
@@ -57,6 +59,16 @@ class InatVisionAPI:
         if results_dict is None:
             return f'Unknown taxon_id {taxon_id}', 422
         return InatVisionAPI.round_floats(results_dict, 8)
+
+    def h3_04_bounds_route(self):
+        taxon_id, error_message, error_code = self.valid_leaf_taxon_id_for_request(request)
+        if error_message:
+            return error_message, error_code
+
+        results_dict = self.inferrer.h3_04_bounds(taxon_id)
+        if results_dict is None:
+            return f'Unknown taxon_id {taxon_id}', 422
+        return results_dict
 
     def index_route(self):
         form = ImageForm()
