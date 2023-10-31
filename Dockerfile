@@ -1,4 +1,6 @@
-FROM python:3.10.5
+FROM python:3.11.6
+
+RUN apt-get update && apt-get install -y libgdal-dev
 
 RUN useradd -ms /bin/bash inaturalist
 USER inaturalist
