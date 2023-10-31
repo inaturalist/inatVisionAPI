@@ -18,4 +18,6 @@ itsdangerous
 werkzeug
 WTForms
 flake8
-tensorflow
+h3
+h3pandas
+prison

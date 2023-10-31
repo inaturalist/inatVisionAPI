@@ -29,7 +29,7 @@ class PTGeoPriorModel:
         filter_taxon = None
         if filter_taxon_id is not None:
             try:
-                filter_taxon = self.taxonomy.taxa[filter_taxon_id]
+                filter_taxon = self.taxonomy.df.iloc[filter_taxon_id]
             except Exception as e:
                 print(f'filter_taxon `{filter_taxon_id}` does not exist in the taxonomy')
                 raise e
