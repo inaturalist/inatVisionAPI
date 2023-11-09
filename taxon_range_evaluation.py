@@ -444,15 +444,15 @@ def main(args):
         row_dict = dict(row)
         eval_output.append(row_dict)
         
-        eval_output_pd = pd.DataFrame(eval_output)
-        print("evaluation statistics:")
-        print("\tPR-AUC: "+str(round(eval_output_pd.prauc.mean(),3)))
-        print("\tPrecision: "+str(round(eval_output_pd.p.mean(),3)))
-        print("\tRecall: "+str(round(eval_output_pd.r.mean(),3)))
-        print("\tF1: "+str(round(eval_output_pd.f1.mean(),3)))
+    eval_output_pd = pd.DataFrame(eval_output)
+    print("evaluation statistics:")
+    print("\tPR-AUC: "+str(round(eval_output_pd.prauc.mean(),3)))
+    print("\tPrecision: "+str(round(eval_output_pd.p.mean(),3)))
+    print("\tRecall: "+str(round(eval_output_pd.r.mean(),3)))
+    print("\tF1: "+str(round(eval_output_pd.f1.mean(),3)))
 
-        print("writing output...")
-        eval_output_pd.to_csv(args.output_path)
+    print("writing output...")
+    eval_output_pd.to_csv(args.output_path)
 
 if __name__ == "__main__":
     
