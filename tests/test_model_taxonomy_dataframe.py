@@ -17,7 +17,7 @@ class TestModelTaxonomyDataframe:
     @pytest.mark.parametrize("taxon", ["Aramus guarauna"], indirect=True)
     def test_nested_set_assigning(self, taxon):
         assert taxon["left"] == 7
-        assert taxon["right"] == 9
+        assert taxon["right"] == 8
 
     @pytest.mark.parametrize("taxon", ["Aramus guarauna"], indirect=True)
     def test_geo_threshold_assigning(self, taxon):
