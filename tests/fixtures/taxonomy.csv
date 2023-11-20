@@ -1,0 +1,21 @@
+parent_taxon_id,taxon_id,rank_level,leaf_class_id,iconic_class_id,spatial_class_id,name
+,1,70,,,1,Animalia
+1,2,60,,,2,Chordata
+2,355675,57,,,3,Vertebrata
+355675,3,50,,,4,Aves
+3,4,40,,,5,Gruiformes
+4,5,30,,,6,Aramidae
+5,6,20,,,7,Aramus
+6,7,10,1,1,8,Aramus guarauna
+3,71262,40,,,9,Cariamiformes
+71262,12,30,,,10,Cariamidae
+12,13,20,,,11,Cariama
+13,14,10,2,1,12,Cariama cristata
+,47126,70,,,13,Plantae
+47126,211194,60,,,14,Tracheophyta
+211194,47125,57,,,15,Angiospermae
+47125,47124,50,,,16,Magnoliopsida
+47124,71289,40,,,17,Saxifragales
+71289,47131,30,,,18,Grossulariaceae
+47131,47130,20,,,19,Ribes
+47130,47129,10,3,2,20,Ribes californicum

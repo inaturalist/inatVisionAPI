@@ -2,35 +2,9 @@ import tensorflow as tf
 import numpy as np
 import math
 import os
+from lib.res_layer import ResLayer
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-
-
-class ResLayer(tf.keras.layers.Layer):
-    def __init__(self):
-        super(ResLayer, self).__init__()
-        self.w1 = tf.keras.layers.Dense(
-            256,
-            activation="relu",
-            kernel_initializer="he_normal"
-        )
-        self.w2 = tf.keras.layers.Dense(
-            256,
-            activation="relu",
-            kernel_initializer="he_normal"
-        )
-        self.dropout = tf.keras.layers.Dropout(rate=0.5)
-        self.add = tf.keras.layers.Add()
-
-    def call(self, inputs):
-        x = self.w1(inputs)
-        x = self.dropout(x)
-        x = self.w2(x)
-        x = self.add([x, inputs])
-        return x
-
-    def get_config(self):
-        return {}
 
 
 class TFGeoPriorModelElev:
@@ -48,26 +22,9 @@ class TFGeoPriorModelElev:
         )
 
     def predict(self, latitude, longitude, elevation):
-        norm_lat = latitude / 90.0
-        norm_lng = longitude / 180.0
-        norm_loc = tf.stack([norm_lng, norm_lat])
-
-        if elevation > 0:
-            norm_elev = elevation / 6574
-        elif elevation == 0:
-            norm_elev = 0.0
-        else:
-            norm_elev = elevation / 32768
-
-        norm_elev = tf.expand_dims(norm_elev, axis=0)
-        encoded_loc = tf.concat([
-            tf.sin(norm_loc * math.pi),
-            tf.cos(norm_loc * math.pi),
-            norm_elev
-        ], axis=0)
-
+        encoded_loc = TFGeoPriorModelElev.encode_loc([latitude], [longitude], [elevation])
         return self.gpmodel(tf.convert_to_tensor(
-            tf.expand_dims(encoded_loc, axis=0)
+            tf.expand_dims(encoded_loc[0], axis=0)
         ), training=False)[0]
 
     def features_for_one_class_elevation(self, latitude, longitude, elevation):
@@ -82,36 +39,8 @@ class TFGeoPriorModelElev:
         Returns:
             numpy array: scores for class of interest at each location
         """
-        def encode_loc(latitude, longitude, elevation):
-            latitude = np.array(latitude)
-            longitude = np.array(longitude)
-            elevation = np.array(elevation)
-            elevation = elevation.astype("float32")
-            grid_lon = longitude.astype('float32') / 180.0
-            grid_lat = latitude.astype('float32') / 90.0
 
-            elevation[elevation > 0] = elevation[elevation > 0] / 6574.0
-            elevation[elevation < 0] = elevation[elevation < 0] / 32768.0
-            norm_elev = elevation
-
-            if np.isscalar(grid_lon):
-                grid_lon = np.array([grid_lon])
-            if np.isscalar(grid_lat):
-                grid_lat = np.array([grid_lat])
-            if np.isscalar(norm_elev):
-                norm_elev = np.array([norm_elev])
-
-            norm_loc = tf.stack([grid_lon, grid_lat], axis=1)
-
-            encoded_loc = tf.concat([
-                tf.sin(norm_loc * math.pi),
-                tf.cos(norm_loc * math.pi),
-                tf.expand_dims(norm_elev, axis=1),
-
-            ], axis=1)
-            return encoded_loc
-
-        encoded_loc = encode_loc(latitude, longitude, elevation)
+        encoded_loc = TFGeoPriorModelElev.encode_loc(latitude, longitude, elevation)
         loc_emb = self.gpmodel.layers[0](encoded_loc)
 
         # res layers - feature extraction
@@ -131,3 +60,33 @@ class TFGeoPriorModelElev:
                 transpose_b=True
             )
         ).numpy()
+
+    @staticmethod
+    def encode_loc(latitude, longitude, elevation):
+        latitude = np.array(latitude)
+        longitude = np.array(longitude)
+        elevation = np.array(elevation)
+        elevation = elevation.astype("float32")
+        grid_lon = longitude.astype("float32") / 180.0
+        grid_lat = latitude.astype("float32") / 90.0
+
+        elevation[elevation > 0] = elevation[elevation > 0] / 6574.0
+        elevation[elevation < 0] = elevation[elevation < 0] / 32768.0
+        norm_elev = elevation
+
+        # if np.isscalar(grid_lon):
+        #     grid_lon = np.array([grid_lon])
+        # if np.isscalar(grid_lat):
+        #     grid_lat = np.array([grid_lat])
+        # if np.isscalar(norm_elev):
+        #     norm_elev = np.array([norm_elev])
+
+        norm_loc = tf.stack([grid_lon, grid_lat], axis=1)
+
+        encoded_loc = tf.concat([
+            tf.sin(norm_loc * math.pi),
+            tf.cos(norm_loc * math.pi),
+            tf.expand_dims(norm_elev, axis=1),
+
+        ], axis=1)
+        return encoded_loc

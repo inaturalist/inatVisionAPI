@@ -24,6 +24,7 @@ class InatInferrer:
     def __init__(self, config):
         self.config = config
         self.setup_taxonomy(config)
+        self.setup_synonyms(config)
         self.setup_vision_model(config)
         self.setup_elevation_dataframe(config)
         self.setup_geo_model(config)
@@ -35,8 +36,15 @@ class InatInferrer:
             config["tf_elev_thresholds"] if "tf_elev_thresholds" in config else None
         )
 
+    def setup_synonyms(self, config):
+        self.synonyms = None
+        if "synonyms_path" in config:
+            if not os.path.exists(config["synonyms_path"]):
+                return None
+            self.synonyms = pd.read_csv(config["synonyms_path"])
+
     def setup_vision_model(self, config):
-        self.vision_inferrer = VisionInferrer(config["vision_model_path"], self.taxonomy)
+        self.vision_inferrer = VisionInferrer(config["vision_model_path"])
 
     def setup_elevation_dataframe(self, config):
         self.geo_elevation_cells = None
@@ -71,20 +79,6 @@ class InatInferrer:
                 longitude=list(self.geo_elevation_cells.lng),
                 elevation=list(self.geo_elevation_cells.elevation)
             )
-
-    def prepare_image_for_inference(self, file_path):
-        mime_type = magic.from_file(file_path, mime=True)
-        # attempt to convert non jpegs
-        if mime_type != "image/jpeg":
-            im = Image.open(file_path)
-            image = im.convert("RGB")
-        else:
-            image = tf.io.read_file(file_path)
-            image = tf.image.decode_jpeg(image, channels=3)
-        image = tf.image.convert_image_dtype(image, tf.float32)
-        image = tf.image.central_crop(image, 0.875)
-        image = tf.image.resize(image, [299, 299], tf.image.ResizeMethod.NEAREST_NEIGHBOR)
-        return tf.expand_dims(image, 0)
 
     def vision_predict(self, image, debug=False):
         if debug:
@@ -125,7 +119,7 @@ class InatInferrer:
                               debug=False):
         if debug:
             start_time = time.time()
-        image = self.prepare_image_for_inference(file_path)
+        image = InatInferrer.prepare_image_for_inference(file_path)
         raw_vision_scores = self.vision_predict(image, debug)
         raw_geo_scores = self.geo_model_predict(lat, lng, debug)
         top100 = self.combine_results(raw_vision_scores, raw_geo_scores, filter_taxon,
@@ -360,6 +354,21 @@ class InatInferrer:
         }
 
     @staticmethod
+    def prepare_image_for_inference(file_path):
+        mime_type = magic.from_file(file_path, mime=True)
+        # attempt to convert non jpegs
+        if mime_type != "image/jpeg":
+            im = Image.open(file_path)
+            image = im.convert("RGB")
+        else:
+            image = tf.io.read_file(file_path)
+            image = tf.image.decode_jpeg(image, channels=3)
+        image = tf.image.convert_image_dtype(image, tf.float32)
+        image = tf.image.central_crop(image, 0.875)
+        image = tf.image.resize(image, [299, 299], tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+        return tf.expand_dims(image, 0)
+
+    @staticmethod
     def add_lat_lng_to_h3_geo_dataframe(geo_df):
         geo_df = geo_df.h3.h3_to_geo()
         geo_df["lng"] = geo_df["geometry"].x
@@ -373,7 +382,7 @@ class InatInferrer:
         # centroid outside the bounds while part of the polygon is within the bounds. Add
         # a small buffer to ensure this returns any cell whose polygon is
         # even partially within the bounds
-        buffer = 0.6
+        buffer = 1.3
 
         # similarly, the centroid may be on the other side of the antimedirian, so lookup
         # cells that might be just over the antimeridian on either side
