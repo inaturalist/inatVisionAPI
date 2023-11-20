@@ -11,8 +11,7 @@ jobs:
       - name: Use Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.x'
-          architecture: 'x86'
+          python-version: '3.11.6'
           cache: 'pip'
       - name: Install dependencies
         run: |
@@ -21,3 +20,15 @@ jobs:
       - name: Test with pytest
         run: |
           coverage run -m pytest -s && coverage report --show-missing
+
+  notify:
+    name: Notify Slack
+    needs: build
+    if: ${{ success() || failure() }}
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: iRoachie/slack-github-actions@v2.3.2
+        if: env.SLACK_WEBHOOK_URL != null
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_BUILDS_WEBHOOK_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

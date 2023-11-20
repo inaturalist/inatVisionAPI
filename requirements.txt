@@ -21,3 +21,8 @@ flake8
 h3
 h3pandas
 prison
+pytest
+pytest-cov
+pytest-mock
+coverage
+tensorflow
