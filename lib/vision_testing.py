@@ -5,7 +5,12 @@ import hashlib
 import magic
 import time
 import json
+import pandas as pd
 import tensorflow as tf
+import asyncio
+import aiohttp
+import aiofiles
+import aiofiles.os
 from statistics import mean
 from PIL import Image
 from lib.test_observation import TestObservation
@@ -39,41 +44,58 @@ class VisionTesting:
         print("\n")
         self.upload_folder = "static/"
 
-    def run(self):
-        count = 0
-        limit = self.cmd_args["limit"] or 100
+    async def worker_task(self):
+        while not self.queue.empty():
+            observation = await self.queue.get()
+            try:
+                if self.processed_counter >= self.limit:
+                    continue
+                obs = TestObservation(observation.to_dict())
+                inferrer_results = await self.test_observation_async(obs)
+                if inferrer_results is False:
+                    continue
+                self.append_to_aggregate_results(obs, inferrer_results)
+                self.processed_counter += 1
+                self.report_progress()
+
+            except Exception as err:
+                print(f'\nObservation: {observation["observation_id"]} failed')
+                print(err)
+
+            finally:
+                self.queue.task_done()
+
+    async def run_async(self):
+        N_WORKERS = 5
+        # queue = asyncio.Queue(N_WORKERS)
+        self.limit = self.cmd_args["limit"] or 100
         target_observation_id = self.cmd_args["observation_id"]
-        start_time = time.time()
-        try:
-            with open(self.cmd_args["path"], "r") as csv_file:
-                csv_reader = csv.DictReader(csv_file, delimiter=",")
-                for row in csv_reader:
-                    observation = TestObservation(row)
-                    if target_observation_id:
-                        # if only one target observation was requested, test this row if it
-                        # matches the request, otherwise skip it
-                        if int(observation.observation_id) == target_observation_id:
-                            inferrer_results = self.test_observation(observation)
-                        else:
-                            continue
+        self.start_time = time.time()
+        self.queued_counter = 0
+        self.processed_counter = 0
+
+        async with aiohttp.ClientSession() as self.session:
+            self.queue = asyncio.Queue(N_WORKERS)
+            self.workers = [asyncio.create_task(self.worker_task())
+                            for _ in range(N_WORKERS)]
+            df = pd.read_csv(self.cmd_args["path"])
+            for index, observation in df.iterrows():
+                if self.processed_counter >= self.limit:
+                    break
+                if target_observation_id:
+                    if observation.observation_id == target_observation_id:
+                        await self.queue.put(observation)
                     else:
-                        inferrer_results = self.test_observation(observation)
-                    if inferrer_results is False:
-                        # there was some problem processing this test observation. Continue but
-                        # don't increment the counter so the requested number of observations
-                        # will still be tested
                         continue
-                    count += 1
-                    self.append_to_aggregate_results(observation, inferrer_results)
-                    if count % 10 == 0:
-                        total_time = round(time.time() - start_time, 3)
-                        remaining_time = round((limit - count) / (count / total_time), 3)
-                        print(f'Processed {count} in {total_time} sec\testimated {remaining_time} sec remaining')
-                    if count >= limit:
-                        return
-        except IOError as e:
-            print(e)
-            print("Testing run failed")
+                else:
+                    await self.queue.put(observation)
+
+            # processes the remaining queue
+            await self.queue.join()
+            # stop the workers
+            for worker in self.workers:
+                worker.cancel()
+            return
 
     # given an x, return the number of scores less than x. Otherwise return the number
     # of scores that are empty or greather than or equal to 100 (essentially the fails)
@@ -168,8 +190,8 @@ class VisionTesting:
                     distance_scores.append(0)
         return match_index, distance_scores
 
-    def test_observation(self, observation):
-        cache_path = self.download_photo(observation.photo_url)
+    async def test_observation_async(self, observation):
+        cache_path = await self.download_photo_async(observation.photo_url)
         if cache_path is None or not os.path.exists(cache_path):
             return False
         if observation.lat == '' or observation.lng == '':
@@ -178,7 +200,6 @@ class VisionTesting:
         iconic_taxon_id = None
         if observation.iconic_taxon_id != "" and self.cmd_args["filter_iconic"] is not False:
             iconic_taxon_id = int(observation.iconic_taxon_id)
-
 
         inferrer_scores = {}
         for index, inferrer in self.inferrers.items():
@@ -220,6 +241,8 @@ class VisionTesting:
         return ancestor_distance_scores
 
     def append_to_aggregate_results(self, observation, inferrer_scores):
+        if self.processed_counter >= self.limit:
+            return
         vision_indices = set()
         combined_indices = set()
         for index, results in inferrer_scores.items():
@@ -269,15 +292,18 @@ class VisionTesting:
                 self.scores["top10_distance_scores"]["combined"][index].append(
                     max(combined_taxon_distance_scores[0:10]))
 
-        # if len(combined_indices) > 1:
-        #     print(f'Results of Observation: {observation.observation_id}: {combined_indices}')
-
-    def download_photo(self, photo_url):
+    async def download_photo_async(self, photo_url):
         checksum = hashlib.md5(photo_url.encode()).hexdigest()
         cache_path = os.path.join(self.upload_folder, "obs-" + checksum) + ".jpg"
-        if os.path.exists(cache_path):
+        if await aiofiles.os.path.exists(cache_path):
             return cache_path
-        urllib.request.urlretrieve(photo_url, cache_path)
+        async with self.session.get(photo_url) as resp:
+            if resp.status == 200:
+                f = await aiofiles.open(cache_path, mode="wb")
+                await f.write(await resp.read())
+                await f.close()
+        if not os.path.exists(cache_path):
+            return
         mime_type = magic.from_file(cache_path, mime=True)
         if mime_type != "image/jpeg":
             im = Image.open(cache_path)
@@ -288,3 +314,9 @@ class VisionTesting:
     def debug(self, message):
         if self.cmd_args["debug"]:
             print(message)
+
+    def report_progress(self):
+        if self.processed_counter % 10 == 0:
+            total_time = round(time.time() - self.start_time, 3)
+            remaining_time = round((self.limit - self.processed_counter) / (self.processed_counter / total_time), 3)
+            print(f'Processed {self.processed_counter} in {total_time} sec\testimated {remaining_time} sec remaining')

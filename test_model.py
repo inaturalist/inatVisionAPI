@@ -1,6 +1,7 @@
 import click
 import yaml
 import json
+import asyncio
 
 CONFIG = yaml.safe_load(open("config.yml"))
 
@@ -16,7 +17,7 @@ CONFIG = yaml.safe_load(open("config.yml"))
               help="Use vision results cache.")
 @click.option("--cache-key", type=str, show_default=True, default="default",
               help="Salt to use when caching vision results.")
-@click.option("--observation_id", type=int, help="Single observation ID to test.")
+@click.option("--observation_id", type=str, help="Single observation UUID to test.")
 @click.option("--filter-iconic/--no-filter-iconic", show_default=True, default=True,
               help="Use iconic taxon for filtering.")
 @click.option("--print-tree", is_flag=True, show_default=True, default=False,
@@ -30,7 +31,9 @@ def test(**args):
     print(json.dumps(args, indent=4))
     print("\nInitializing VisionTesting...\n")
     testing = VisionTesting(CONFIG, **args)
-    testing.run()
+
+    asyncio.run(testing.run_async())
+
     testing.print_scores()
     print("\nDone\n")
 
