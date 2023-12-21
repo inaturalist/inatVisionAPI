@@ -1,0 +1,26 @@
+flake8
+Flask
+Flask-WTF
+h3
+h3pandas
+itsdangerous
+jinja2
+keras
+matplotlib
+numpy
+pandas
+Pillow
+prison
+python-magic
+pyyaml
+scikit_learn
+scipy
+six
+tensorflow
+tifffile
+umap_learn
+uWSGI
+werkzeug
+WTForms
+#-f https://download.pytorch.org/whl/torch_stable.html
+#torch==2.1.0+cpu

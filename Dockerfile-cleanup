@@ -1,0 +1,20 @@
+FROM alpine:latest
+
+RUN apk add --no-cache logrotate
+
+RUN mkdir -p /var/vision/log
+RUN mkdir -p /var/vision/static
+RUN mkdir -p /var/vision/script
+
+# Configure logrotate hourly
+COPY docker/logrotate.conf /var/vision/script/logrotate.conf
+COPY docker/logrotate-cron.sh /var/vision/script/logrotate-cron.sh
+RUN chmod 400 /var/vision/script/logrotate.conf
+RUN crontab -l | { cat; echo "0 * * * * sh /var/vision/script/logrotate-cron.sh"; } | crontab -
+
+# Configure job to clean static folder
+COPY docker/clean-static-cron.sh /var/vision/script/clean-static-cron.sh
+RUN crontab -l | { cat; echo "*/10 * * * * sh /var/vision/script/clean-static-cron.sh"; } | crontab -
+
+# Run cron
+CMD ["/bin/sh", "-c", "crond -f"]

@@ -3,3 +3,4 @@ log/*
 static/*
 venv
 config.yml
+models
