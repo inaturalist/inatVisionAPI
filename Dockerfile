@@ -35,10 +35,6 @@ CMD [ "python", "app.py" ]
 # Production target with uwsgi
 FROM development AS production
 
-COPY --chown=inaturalist:inaturalist ./uwsgi_main /home/inaturalist/vision/uwsgi_code
-
-RUN pip install /home/inaturalist/vision/uwsgi_code
-
 # Configure uwsgi
 ENV UWSGI_PLUGIN_DIR /usr/lib/uwsgi/plugins
 RUN mkdir /home/inaturalist/vision/uwsgi
