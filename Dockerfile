@@ -16,7 +16,7 @@ WORKDIR /home/inaturalist/vision
 COPY --chown=inaturalist:inaturalist ./requirements-production.txt /home/inaturalist/vision/requirements.txt
 
 # install dependencies
-RUN pip install -r requirements.txt
+RUN UWSGI_EMBED_PLUGINS=stats_pusher_statsd pip install -r requirements.txt
 
 # Copy app and libs
 COPY --chown=inaturalist:inaturalist app.py /home/inaturalist/vision
