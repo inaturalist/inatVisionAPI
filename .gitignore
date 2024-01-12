@@ -99,3 +99,4 @@ models/*
 test-obs*
 lib/vision_cache/*
 config.yml
+env.list
