@@ -3,7 +3,7 @@ name: Vision CI/CD Main Branch
 on:
   push:
     branches:
-      - main
+      - cicd
 
 jobs:
   build-and-test:
@@ -48,7 +48,7 @@ jobs:
   deploy-staging:
     name: Deploy to Staging
     environment: staging
-    needs: [build-and-test, build-and-push-staging-docker-image]
+    needs: build-and-push-staging-docker-image
     runs-on: ubuntu-20.04
     steps:    
     - name: Deploy to Staging
@@ -57,7 +57,7 @@ jobs:
   tag-and-push-production-docker-image:
     name: Tag/Push Production Docker Image 
     environment: production
-    needs: [deploy-staging]
+    needs: [build-and-test, deploy-staging]
     runs-on: ubuntu-20.04
     steps:    
     - name: Login to Docker Hub
