@@ -1,0 +1,63 @@
+name: Vision CI/CD Dev Branch (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: environment
+        description: Select the environment
+      choice:
+        type: choice
+        description: Make a choice
+        options:
+        - env1
+        - env2
+        - env3
+
+jobs:
+  build-and-test:
+    name: Build/Test 
+    runs-on: ubuntu-20.04
+    steps:    
+    - uses: actions/checkout@v3
+
+  build-and-push-dev-docker-image:
+    name: Build/Push Staging Docker Image 
+    runs-on: ubuntu-20.04
+    steps:    
+    - uses: actions/checkout@v3
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}  
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Build and push vision-api
+      uses: docker/setup-buildx-action@v3
+      # uses: docker/build-push-action@v5
+      # with:
+      #   context: .
+      #   file: ./Dockerfile
+      #   push: true
+      #   tags: ${{ secrets.DOCKERHUB_USERNAME }}/vision-api:${{ github.ref_name }}
+
+    - name: Build and push vision-cleanup
+      uses: docker/setup-buildx-action@v3
+      # uses: docker/build-push-action@v5
+      # with:
+      #   context: .
+      #   file: ./Dockerfile-cleanup
+      #   push: true
+      #   tags: ${{ secrets.DOCKERHUB_USERNAME }}/vision-cleanup:${{ github.ref_name }}
+
+  deploy-staging-envX:
+    name: Deploy to Staging Env X
+    needs: build-and-push-dev-docker-image
+    runs-on: ubuntu-20.04
+    steps:    
+    - name: Deploy to Staging Env X
+      uses: docker/setup-buildx-action@v3
