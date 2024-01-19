@@ -51,6 +51,7 @@ jobs:
     runs-on: ubuntu-20.04
     steps:    
     - name: Deploy to Staging
+      uses: docker/setup-buildx-action@v3
 
   tag-and-push-production-docker-image:
     name: Vision / Tag and Push Production Docker Image 
@@ -67,8 +68,10 @@ jobs:
       uses: docker/setup-buildx-action@v3
     
     - name: Tag and push vision-api for Production
+      uses: docker/setup-buildx-action@v3
 
     - name: Tag and push vision-cleanup for Production
+      uses: docker/setup-buildx-action@v3
 
   deploy-staging:
     name: Vision / Deploy to Production
@@ -76,3 +79,4 @@ jobs:
     needs: [tag-and-push-production-docker-image]
     runs-on: ubuntu-20.04
     - name: Deploy to Production
+      uses: docker/setup-buildx-action@v3
