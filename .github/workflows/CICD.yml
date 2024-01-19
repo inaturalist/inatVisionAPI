@@ -29,20 +29,22 @@ jobs:
       uses: docker/setup-buildx-action@v3
     
     - name: Build and push vision-api for Staging
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        file: ./Dockerfile
-        push: true
-        tags: ${{ secrets.DOCKERHUB_USERNAME }}/vision-api:${{ github.sha }}-staging
+      uses: docker/setup-buildx-action@v3
+      # uses: docker/build-push-action@v5
+      # with:
+      #   context: .
+      #   file: ./Dockerfile
+      #   push: true
+      #   tags: ${{ secrets.DOCKERHUB_USERNAME }}/vision-api:${{ github.sha }}-staging
 
     - name: Build and push vision-cleanup for Staging
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        file: ./Dockerfile-cleanup
-        push: true
-        tags: ${{ secrets.DOCKERHUB_USERNAME }}/vision-cleanup:${{ github.sha }}-staging
+      uses: docker/setup-buildx-action@v3
+      # uses: docker/build-push-action@v5
+      # with:
+      #   context: .
+      #   file: ./Dockerfile-cleanup
+      #   push: true
+      #   tags: ${{ secrets.DOCKERHUB_USERNAME }}/vision-cleanup:${{ github.sha }}-staging
 
   deploy-staging:
     name: Deploy to Staging
