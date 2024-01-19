@@ -4,8 +4,15 @@ on:
   push:
     branches:
       - main
+  pull_request:
 
 jobs:
+  job1:
+    name: job1
+    runs-on: ubuntu-20.04
+    steps:    
+      - run: echo 'this is my fork'
+      
   build-push-docker-image-vision-api:
     name: Build and Push Docker Image vision-api
     runs-on: ubuntu-20.04
