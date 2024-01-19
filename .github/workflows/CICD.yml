@@ -78,7 +78,6 @@ jobs:
 
   deploy-production:
     name: Deploy to Production
-    environment: production
     needs: [tag-and-push-production-docker-image]
     runs-on: ubuntu-20.04
     steps:    
