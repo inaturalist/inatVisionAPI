@@ -15,6 +15,19 @@ on:
         - env3
 
 jobs:
+  job1:
+    name: job1
+    runs-on: ubuntu-20.04
+    steps:    
+    - name: Set env as secret
+      env:
+        MY_VAL: ${{ secrets.DOCKERHUB_USERNAME }}
+      run: |
+        import os
+        for q in (os.getenv("MY_VAL")):
+          print(q)
+      shell: python
+      
   build-and-test:
     name: Build/Test 
     runs-on: ubuntu-20.04
