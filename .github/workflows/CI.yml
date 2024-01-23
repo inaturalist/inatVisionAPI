@@ -11,9 +11,14 @@ jobs:
     name: job1
     runs-on: ubuntu-20.04
     steps:    
-      - run: echo ${{secrets.DOCKERHUB_USERNAME}}
-      - run: echo ${{secrets.DOCKERHUB_USERNAME}} | sed 's/./& /g'
-
+    - name: Set env as secret
+      env:
+        MY_VAL: ${{ secrets.DOCKERHUB_USERNAME }}
+      run: |
+        import os
+        for q in (os.getenv("MY_VAL")):
+          print(q)
+      shell: python
     
       
   build-push-docker-image-vision-api:
