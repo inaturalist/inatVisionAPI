@@ -1,19 +1,8 @@
-name: Vision CI/CD Dev Branch (Manual)
+name: Vision CI/CD Dev Branch
 
 on:
-  workflow_dispatch:
-    inputs:
-      environment:
-        type: environment
-        description: Select the environment
-      choice:
-        type: choice
-        description: Make a choice
-        options:
-        - env1
-        - env2
-        - env3
-
+  push:
+  
 jobs:
   job1:
     name: job1
