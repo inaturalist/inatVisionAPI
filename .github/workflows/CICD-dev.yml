@@ -30,7 +30,7 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
     
-    - name: Build/Push dev vision-api
+    - name: Build/Push Dev inatvisionapi
       uses: docker/build-push-action@v5
       with:
         context: .
@@ -38,7 +38,7 @@ jobs:
         push: true
         tags: ${{ secrets.DOCKERHUB_USERNAME }}/inatvisionapi:${{ github.ref_name }}
 
-    - name: Build/Push dev vision-cleanup
+    - name: Build/Push Dev inatvisionapi-cleanup
       uses: docker/build-push-action@v5
       with:
         context: .
