@@ -48,4 +48,12 @@ jobs:
 
   notify-slack:
     needs: build-and-push-dev-docker-image
-    uses: ./.github/workflows/CI-notify-slack.yml
+    name: Notify Slack
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: iRoachie/slack-github-actions@v2.3.2
+      if: env.SLACK_WEBHOOK_URL != null
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_BUILDS_WEBHOOK_URL }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  
