@@ -5,6 +5,7 @@ on:
 
 jobs:
   pre-build:
+    name: Pre-build
     runs-on: ubuntu-20.04
     steps:
     - uses: fkirc/skip-duplicate-actions@master

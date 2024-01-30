@@ -7,11 +7,9 @@ on:
 
 jobs:
   pre-build:
-    name: Pre-build
     uses: ./.github/workflows/CI-pre-build.yml
 
   build-and-test:
-    name: Build/Test
     needs: pre-build
     uses: ./.github/workflows/CI-build-test.yml
 
@@ -48,6 +46,5 @@ jobs:
         tags: ${{ secrets.DOCKERHUB_USERNAME }}/vision-cleanup:${{ github.sha }}
 
   notify-slack:
-    name: Notify Slack
     needs: build-and-push-main-docker-image
     uses: ./.github/workflows/CI-notify-slack.yml
