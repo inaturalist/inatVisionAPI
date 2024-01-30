@@ -6,7 +6,6 @@ on:
 jobs:
   notify-slack:
     name: Notify Slack
-    if: ${{ success() || failure() }}
     runs-on: ubuntu-20.04
     steps:
     - uses: iRoachie/slack-github-actions@v2.3.2
