@@ -1,0 +1,11 @@
+name: Vision Build and Test
+
+on:
+  workflow_call:
+
+jobs:
+  build-and-test:
+    name: Build/Test 
+    runs-on: ubuntu-20.04
+    steps:    
+    - uses: actions/checkout@v4

@@ -1,4 +1,4 @@
-name: Vision CI Dev Branch
+name: Vision CI/CD Dev Branch
 
 on:
   push:
@@ -7,17 +7,21 @@ on:
       - '!main'
 
 jobs:
+  pre-build:
+    name: Pre-build
+    uses: ./.github/workflows/CI-pre-build.yml
+
   build-and-test:
-    name: Build/Test 
-    runs-on: ubuntu-20.04
-    steps:    
-    - uses: actions/checkout@v3
+    name: Build/Test
+    needs: pre-build
+    uses: ./.github/workflows/CI-build-test.yml
 
   build-and-push-dev-docker-image:
-    name: Build/Push Staging Docker Image 
+    name: Build/Push Dev Docker Image 
+    needs: pre-build
     runs-on: ubuntu-20.04
     steps:    
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Login to Docker Hub
       uses: docker/login-action@v3
@@ -43,3 +47,8 @@ jobs:
         file: ./Dockerfile-cleanup
         push: true
         tags: ${{ secrets.DOCKERHUB_USERNAME }}/vision-cleanup:${{ github.ref_name }}
+
+  notify-slack:
+    name: Notify Slack
+    needs: build-and-push-dev-docker-image
+    uses: ./.github/workflows/CI-notify-slack.yml

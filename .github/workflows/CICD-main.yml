@@ -1,4 +1,4 @@
-name: Vision CI Main Branch
+name: Vision CI/CD Main Branch
 
 on:
   push:
@@ -6,17 +6,21 @@ on:
       - main
 
 jobs:
-  build-and-test:
-    name: Build/Test 
-    runs-on: ubuntu-20.04
-    steps:    
-    - uses: actions/checkout@v3
+  pre-build:
+    name: Pre-build
+    uses: ./.github/workflows/CI-pre-build.yml
 
-  build-and-push-staging-docker-image:
-    name: Build/Push Staging Docker Image 
+  build-and-test:
+    name: Build/Test
+    needs: pre-build
+    uses: ./.github/workflows/CI-build-test.yml
+
+  build-and-push-main-docker-image:
+    name: Build/Push Main Docker Image 
+    needs: pre-build
     runs-on: ubuntu-20.04
     steps:    
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Login to Docker Hub
       uses: docker/login-action@v3
@@ -27,7 +31,7 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
     
-    - name: Build/Push staging vision-api
+    - name: Build/Push Main vision-api
       uses: docker/build-push-action@v5
       with:
         context: .
@@ -35,10 +39,15 @@ jobs:
         push: true
         tags: ${{ secrets.DOCKERHUB_USERNAME }}/vision-api:${{ github.sha }}
 
-    - name: Build/Push staging vision-cleanup
+    - name: Build/Push Main vision-cleanup
       uses: docker/build-push-action@v5
       with:
         context: .
         file: ./Dockerfile-cleanup
         push: true
         tags: ${{ secrets.DOCKERHUB_USERNAME }}/vision-cleanup:${{ github.sha }}
+
+  notify-slack:
+    name: Notify Slack
+    needs: build-and-push-main-docker-image
+    uses: ./.github/workflows/CI-notify-slack.yml
