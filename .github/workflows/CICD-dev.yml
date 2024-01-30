@@ -36,7 +36,7 @@ jobs:
         context: .
         file: ./Dockerfile
         push: true
-        tags: ${{ secrets.DOCKERHUB_USERNAME }}/vision-api:${{ github.ref_name }}
+        tags: ${{ secrets.DOCKERHUB_USERNAME }}/inatvisionapi:${{ github.ref_name }}
 
     - name: Build/Push dev vision-cleanup
       uses: docker/build-push-action@v5
@@ -44,11 +44,12 @@ jobs:
         context: .
         file: ./Dockerfile-cleanup
         push: true
-        tags: ${{ secrets.DOCKERHUB_USERNAME }}/vision-cleanup:${{ github.ref_name }}
+        tags: ${{ secrets.DOCKERHUB_USERNAME }}/inatvisionapi-cleanup:${{ github.ref_name }}
 
   notify-slack:
-    needs: build-and-push-dev-docker-image
     name: Notify Slack
+    needs: build-and-push-dev-docker-image
+    if: ${{ success() || failure() }}
     runs-on: ubuntu-20.04
     steps:
     - uses: iRoachie/slack-github-actions@v2.3.2
@@ -56,4 +57,3 @@ jobs:
       env:
         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_BUILDS_WEBHOOK_URL }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  
