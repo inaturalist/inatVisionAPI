@@ -8,26 +8,26 @@ on:
 
 jobs:
   build-and-test:
-    name: Build/Test 
+    name: Build/Test
     runs-on: ubuntu-20.04
-    steps:    
+    steps:
     - uses: actions/checkout@v4
 
   build-and-push-dev-docker-image:
-    name: Build/Push Dev Docker Image 
+    name: Build/Push Dev Docker Image
     runs-on: ubuntu-20.04
-    steps:    
+    steps:
     - uses: actions/checkout@v4
 
     - name: Login to Docker Hub
       uses: docker/login-action@v3
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}  
-    
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
-    
+
     - name: Build/Push dev vision-api
       uses: docker/build-push-action@v5
       with:

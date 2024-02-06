@@ -14,7 +14,7 @@ class Taxon:
 
     def __init__(self, row):
         for key in row:
-            setattr(self, key, row[key])
+            self.set(key, row[key])
 
     def set(self, attr, val):
         setattr(self, attr, val)
