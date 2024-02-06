@@ -1,4 +1,3 @@
-coverage
 flake8
 Flask
 Flask-WTF
@@ -12,9 +11,6 @@ numpy
 pandas
 Pillow
 prison
-pytest
-pytest-cov
-pytest-mock
 python-magic
 pyyaml
 scikit_learn
@@ -22,7 +18,9 @@ scipy
 six
 tensorflow
 tifffile
-torch
 umap_learn
+uWSGI
 werkzeug
 WTForms
+#-f https://download.pytorch.org/whl/torch_stable.html
+#torch==2.1.0+cpu

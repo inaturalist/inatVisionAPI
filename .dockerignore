@@ -1,0 +1,6 @@
+__pyache__
+log/*
+static/*
+venv
+config.yml
+models
