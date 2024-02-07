@@ -18,7 +18,7 @@ class TestInatInferrer:
         )
         tf.keras.models.load_model.assert_any_call(
             inatInferrer.config["tf_geo_elevation_model_path"],
-            custom_objects={'ResLayer': ResLayer},
+            custom_objects={"ResLayer": ResLayer},
             compile=False
         )
 

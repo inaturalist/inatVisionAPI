@@ -57,7 +57,7 @@ class InatVisionAPI:
         else:
             results_dict = h3_04_method(taxon_id, bounds)
         if results_dict is None:
-            return f'Unknown taxon_id {taxon_id}', 422
+            return f"Unknown taxon_id {taxon_id}", 422
         return InatVisionAPI.round_floats(results_dict, 8)
 
     def h3_04_bounds_route(self):
@@ -67,7 +67,7 @@ class InatVisionAPI:
 
         results_dict = self.inferrer.h3_04_bounds(taxon_id)
         if results_dict is None:
-            return f'Unknown taxon_id {taxon_id}', 422
+            return f"Unknown taxon_id {taxon_id}", 422
         return results_dict
 
     def index_route(self):
@@ -133,11 +133,11 @@ class InatVisionAPI:
                 "aggregated_geo_threshold": "geo_threshold"
             }
 
-            no_geo_scores = (leaf_scores["geo_score"].max() == 0)
-
             # set a cutoff where branches whose combined scores are below the threshold are ignored
             # TODO: this threshold is completely arbitrary and needs testing
-            aggregated_results = aggregated_results.query("normalized_aggregated_combined_score > 0.05")
+            aggregated_results = aggregated_results.query(
+                "normalized_aggregated_combined_score > 0.05"
+            )
 
             # after setting a cutoff, get the parent IDs of the remaining taxa
             parent_taxon_ids = aggregated_results["parent_taxon_id"].values  # noqa: F841
@@ -145,20 +145,30 @@ class InatVisionAPI:
             # taxa who are not parents of any remaining taxa
             leaf_results = aggregated_results.query("taxon_id not in @parent_taxon_ids")
 
-            leaf_results = leaf_results.sort_values("aggregated_combined_score", ascending=False).head(100)
+            leaf_results = leaf_results.sort_values(
+                "aggregated_combined_score",
+                ascending=False
+            ).head(100)
             score_columns = ["aggregated_combined_score", "aggregated_geo_score",
                              "aggregated_vision_score", "aggregated_geo_threshold"]
             leaf_results[score_columns] = leaf_results[score_columns].multiply(100, axis="index")
             final_results = leaf_results[columns_to_return].rename(columns=column_mapping)
         else:
-            no_geo_scores = (leaf_scores["geo_score"].max() == 0)
-            top_combined_score = leaf_scores.sort_values("combined_score", ascending=False).head(1)["combined_score"].values[0]
+            top_combined_score = leaf_scores.sort_values(
+                "combined_score",
+                ascending=False
+            ).head(1)["combined_score"].values[0]
             # set a cutoff so results whose combined scores are
             # much lower than the best score are not returned
-            leaf_scores = leaf_scores.query(f'combined_score > {top_combined_score * 0.001}')
+            leaf_scores = leaf_scores.query(f"combined_score > {top_combined_score * 0.001}")
 
             top100 = leaf_scores.sort_values("combined_score", ascending=False).head(100)
-            score_columns = ["combined_score", "geo_score", "normalized_vision_score", "geo_threshold"]
+            score_columns = [
+                "combined_score",
+                "geo_score",
+                "normalized_vision_score",
+                "geo_threshold"
+            ]
             top100[score_columns] = top100[score_columns].multiply(100, axis="index")
 
             # legacy dict response
@@ -222,7 +232,7 @@ class InatVisionAPI:
 
         taxon_id = int(taxon_id)
         if float(taxon_id) not in self.inferrer.taxonomy.leaf_df["taxon_id"].values:
-            return None, f'Unknown taxon_id {taxon_id}', 422
+            return None, f"Unknown taxon_id {taxon_id}", 422
         return taxon_id, None, None
 
     def valid_bounds_for_request(self, request):
@@ -242,12 +252,12 @@ class InatVisionAPI:
     def write_logstash(image_uuid, file_path, request_start_datetime, request_start_time):
         request_end_time = time.time()
         request_time = round((request_end_time - request_start_time) * 1000, 6)
-        logstash_log = open('log/logstash.log', 'a')
-        log_data = {'@timestamp': request_start_datetime.isoformat(),
-                    'uuid': image_uuid,
-                    'duration': request_time,
-                    'client_ip': request.access_route[0],
-                    'image_size': os.path.getsize(file_path)}
+        logstash_log = open("log/logstash.log", "a")
+        log_data = {"@timestamp": request_start_datetime.isoformat(),
+                    "uuid": image_uuid,
+                    "duration": request_time,
+                    "client_ip": request.access_route[0],
+                    "image_size": os.path.getsize(file_path)}
         json.dump(log_data, logstash_log)
         logstash_log.write("\n")
         logstash_log.close()

@@ -1,4 +1,3 @@
-import math
 import pandas as pd
 
 
@@ -8,7 +7,27 @@ class ModelTaxonomyDataframe:
         self.load_mapping(path, thresholds_path)
 
     def load_mapping(self, path, thresholds_path):
-        self.df = pd.read_csv(path)
+        self.df = pd.read_csv(
+            path,
+            usecols=[
+                "parent_taxon_id",
+                "taxon_id",
+                "rank_level",
+                "leaf_class_id",
+                "iconic_class_id",
+                "spatial_class_id",
+                "name"
+            ],
+            dtype={
+                "parent_taxon_id": "Int64",
+                "taxon_id": int,
+                "rank_level": float,
+                "leaf_class_id": "Int64",
+                "iconic_class_id": "Int64",
+                "spatial_class_id": "Int64",
+                "name": pd.StringDtype()
+            }
+        )
         # left and right will be used to store nested set indices
         self.df["left"] = pd.Series([], dtype=object)
         self.df["right"] = pd.Series([], dtype=object)
@@ -17,7 +36,7 @@ class ModelTaxonomyDataframe:
         self.taxon_ancestors = {}
         for index, taxon in self.df.iterrows():
             self.taxon_row_mapping[taxon["taxon_id"]] = index
-            parent_id = 0 if math.isnan(taxon["parent_taxon_id"]) else int(taxon["parent_taxon_id"])
+            parent_id = 0 if pd.isna(taxon["parent_taxon_id"]) else int(taxon["parent_taxon_id"])
             if parent_id not in self.taxon_children:
                 self.taxon_children[parent_id] = []
             self.taxon_children[parent_id].append(taxon["taxon_id"])
@@ -50,7 +69,7 @@ class ModelTaxonomyDataframe:
     def children(df, taxon_id):
         if taxon_id == 0:
             return df.query("parent_taxon_id.isnull()")
-        return df.query(f'parent_taxon_id == {taxon_id}')
+        return df.query(f"parent_taxon_id == {taxon_id}")
 
     @staticmethod
     def print(df, taxon_id=0, ancestor_prefix="", display_taxon_lambda=None):
@@ -65,10 +84,15 @@ class ModelTaxonomyDataframe:
             index += 1
             icon = "└──" if last_in_branch else "├──"
             prefixIcon = "   " if last_in_branch else "│   "
-            print(f'{ancestor_prefix}{icon}', end="")
+            print(f"{ancestor_prefix}{icon}", end="")
             if display_taxon_lambda is None:
-                print(f'{row.name} :: {row.left}:{row.right}')
+                print(f"{row.name} :: {row.left}:{row.right}")
             else:
                 print(display_taxon_lambda(row))
             if row.right != row.left + 1:
-                ModelTaxonomyDataframe.print(df, row.taxon_id, f"{ancestor_prefix}{prefixIcon}", display_taxon_lambda)
+                ModelTaxonomyDataframe.print(
+                    df,
+                    row.taxon_id,
+                    f"{ancestor_prefix}{prefixIcon}",
+                    display_taxon_lambda
+                )

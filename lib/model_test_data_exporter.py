@@ -95,7 +95,7 @@ class ModelTestDataExporter:
         min_pages_remaining = math.ceil(
             (self.max_results / ModelTestDataExporter.API_REQUEST_PER_PAGE)
         )
-        print(f'Queueing {min_pages_remaining} workers')
+        print(f"Queueing {min_pages_remaining} workers")
         for i in range(min_pages_remaining):
             await self.queue.put(i)
         await self.queue.join()
@@ -110,7 +110,7 @@ class ModelTestDataExporter:
         if self.finished():
             return
 
-        print(f'Fetching more results... {self.rows_written} so far')
+        print(f"Fetching more results... {self.rows_written} so far")
         starting_rows_written = self.rows_written
         async with self.session.get(ModelTestDataExporter.API_BASE_URL,
                                     params=self.api_parameters) as response:
@@ -158,7 +158,8 @@ class ModelTestDataExporter:
             self.used_observations[row["uuid"]] = True
             return
 
-        if row["quality_grade"] == "casual" and not (row["community_taxon_id"] and row["community_taxon_id"] == row["taxon"]["id"]):
+        if row["quality_grade"] == "casual" \
+           and not (row["community_taxon_id"] and row["community_taxon_id"] == row["taxon"]["id"]):
             self.used_observations[row["uuid"]] = True
             return
 

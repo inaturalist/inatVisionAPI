@@ -52,7 +52,9 @@ class InatInferrer:
         if "elevation_h3_r4" in config:
             self.geo_elevation_cells = pd.read_csv(config["elevation_h3_r4"]). \
                 sort_values("h3_04").set_index("h3_04").sort_index()
-            self.geo_elevation_cells = InatInferrer.add_lat_lng_to_h3_geo_dataframe(self.geo_elevation_cells)
+            self.geo_elevation_cells = InatInferrer.add_lat_lng_to_h3_geo_dataframe(
+                self.geo_elevation_cells
+            )
 
     def setup_elevation_dataframe_from_worldclim(self, config, resolution):
         # preventing from processing at too high a resolution
@@ -67,7 +69,7 @@ class InatInferrer:
             im_df = im_df.melt(id_vars=["index"])
             im_df.columns = ["lat", "lng", "elevation"]
             elev_dfh3 = im_df.h3.geo_to_h3(resolution)
-            elev_dfh3 = elev_dfh3.drop(columns=["lng", "lat"]).groupby(f'h3_0{resolution}').mean()
+            elev_dfh3 = elev_dfh3.drop(columns=["lng", "lat"]).groupby(f"h3_0{resolution}").mean()
 
     def setup_geo_model(self, config):
         self.geo_elevation_model = None
@@ -112,7 +114,7 @@ class InatInferrer:
         try:
             return self.taxonomy.df.loc[taxon_id]
         except Exception as e:
-            print(f'taxon `{taxon_id}` does not exist in the taxonomy')
+            print(f"taxon `{taxon_id}` does not exist in the taxonomy")
             raise e
 
     def predictions_for_image(self, file_path, lat, lng, filter_taxon, score_without_geo=False,
@@ -154,7 +156,8 @@ class InatInferrer:
             )
             # normalize the vision scores so they add up to 1 after filtering
             sum_of_vision_scores = leaf_scores["vision_score"].sum()
-            leaf_scores["normalized_vision_score"] = leaf_scores["vision_score"] / sum_of_vision_scores
+            leaf_scores["normalized_vision_score"] = \
+                leaf_scores["vision_score"] / sum_of_vision_scores
         else:
             # when not filtering by a taxon, the normalized vision score is the same as the original
             leaf_scores["normalized_vision_score"] = leaf_scores["vision_score"]
@@ -182,8 +185,8 @@ class InatInferrer:
             # using nested set left and right values, select the filter taxon,
             # its descendants, and its ancestors
             all_node_scores = self.taxonomy.df.query(
-                f'(left >= {filter_taxon["left"]} and right <= {filter_taxon["right"]}) or' +
-                f'(left < {filter_taxon["left"]} and right > {filter_taxon["right"]})'
+                f"(left >= {filter_taxon['left']} and right <= {filter_taxon['right']}) or"
+                f"(left < {filter_taxon['left']} and right > {filter_taxon['right']})"
             ).copy().reset_index(drop=True)
         else:
             all_node_scores = self.taxonomy.df.copy().reset_index(drop=True)
@@ -204,7 +207,7 @@ class InatInferrer:
 
         aggregated_scores = {}
         # restrict score aggregation to results where the combined score is above the cutoff
-        scores_to_aggregate = leaf_scores.query(f'combined_score > {cutoff}')
+        scores_to_aggregate = leaf_scores.query(f"combined_score > {cutoff}")
         # loop through all results where the combined score is above the cutoff
         for taxon_id, vision_score, geo_score, geo_threshold in zip(
             scores_to_aggregate["taxon_id"],
@@ -223,13 +226,14 @@ class InatInferrer:
                         aggregated_scores[ancestor_taxon_id]["aggregated_geo_threshold"] = 100
                 # aggregated vision score is a sum of descendant scores
                 aggregated_scores[ancestor_taxon_id]["aggregated_vision_score"] += vision_score
-                if not no_geo_scores and geo_score > aggregated_scores[ancestor_taxon_id]["aggregated_geo_score"]:
+                if not no_geo_scores and \
+                   geo_score > aggregated_scores[ancestor_taxon_id]["aggregated_geo_score"]:
                     # aggregated geo score is the max of descendant geo scores
                     aggregated_scores[ancestor_taxon_id]["aggregated_geo_score"] = geo_score
                 if not no_geo_scores and \
                     aggregated_scores[ancestor_taxon_id]["aggregated_geo_threshold"] != 0 and \
                         geo_score > geo_threshold:
-                    # aggregated geo threshold is set to 0 if any descendants are above their threshold
+                    # aggregated threshold is set to 0 if any descendants are above their threshold
                     aggregated_scores[ancestor_taxon_id]["aggregated_geo_threshold"] = 0
 
         # turn the aggregated_scores dict into a data frame
@@ -252,12 +256,13 @@ class InatInferrer:
         if (no_geo_scores or score_without_geo):
             # if there are no geo scores, or it was requested to not use geo scores to affect
             # the final combined score, set the combined scores to be the same as the vision scores
-            all_node_scores["aggregated_combined_score"] = all_node_scores["aggregated_vision_score"]
+            all_node_scores["aggregated_combined_score"] = \
+                all_node_scores["aggregated_vision_score"]
         else:
             # the combined score is simply the normalized vision score
             # multipliedby the normalized geo score
-            all_node_scores["aggregated_combined_score"] = all_node_scores["aggregated_vision_score"] * \
-                all_node_scores["aggregated_geo_score"]
+            all_node_scores["aggregated_combined_score"] = \
+                all_node_scores["aggregated_vision_score"] * all_node_scores["aggregated_geo_score"]
 
         # calculate a normalized combined score so all values add to 1, to be used for thresholding
         sum_of_root_node_aggregated_combined_scores = all_node_scores.query(
@@ -267,26 +272,30 @@ class InatInferrer:
 
         if debug:
             print("Aggregation Time: %0.2fms" % ((time.time() - start_time) * 1000.))
-            thresholded_results = all_node_scores.query("normalized_aggregated_combined_score > 0.05")
+            thresholded_results = all_node_scores.query(
+                "normalized_aggregated_combined_score > 0.05"
+            )
             print("\nTree of aggregated results:")
             ModelTaxonomyDataframe.print(thresholded_results, display_taxon_lambda=(
-                lambda row: f'{row.name}    [' +
-                            f'V:{round(row.aggregated_vision_score, 4)}, ' +
-                            f'G:{round(row.aggregated_geo_score, 4)}, ' +
-                            f'C:{round(row.aggregated_combined_score, 4)}, ' +
-                            f'NC:{round(row.normalized_aggregated_combined_score, 4)}]'))
+                lambda row: f"{row.name}    ["
+                            f"V:{round(row.aggregated_vision_score, 4)}, "
+                            f"G:{round(row.aggregated_geo_score, 4)}, "
+                            f"C:{round(row.aggregated_combined_score, 4)}, "
+                            f"NC:{round(row.normalized_aggregated_combined_score, 4)}]"
+            ))
             print("")
         return all_node_scores
 
-    def h3_04_geo_results_for_taxon(self, taxon_id, bounds=[], thresholded=False, raw_results=False):
+    def h3_04_geo_results_for_taxon(self, taxon_id, bounds=[],
+                                    thresholded=False, raw_results=False):
         if (self.geo_elevation_cells is None) or (self.geo_elevation_model is None):
             return
         try:
             taxon = self.taxonomy.df.loc[taxon_id]
         except Exception as e:
-            print(f'taxon `{taxon_id}` does not exist in the taxonomy')
+            print(f"taxon `{taxon_id}` does not exist in the taxonomy")
             raise e
-        if math.isnan(taxon["leaf_class_id"]):
+        if pd.isna(taxon["leaf_class_id"]):
             return
 
         geo_scores = self.geo_elevation_model.eval_one_class_elevation_from_features(
@@ -300,7 +309,7 @@ class InatInferrer:
             # is smaller. This reduces data needed to be redendered client-side for the Data Layer
             # mapping approach, and maybe can be removed once switching to map tiles
             lower_bound_score = np.array([0.0001, taxon["geo_threshold"] / 10]).min()
-            geo_score_cells = geo_score_cells.query(f'geo_score > {lower_bound_score}')
+            geo_score_cells = geo_score_cells.query(f"geo_score > {lower_bound_score}")
 
         if bounds:
             min = geo_score_cells["geo_score"].min()
@@ -316,7 +325,7 @@ class InatInferrer:
         return dict(zip(geo_score_cells.index.astype(str), geo_score_cells["geo_score"]))
 
     def h3_04_taxon_range(self, taxon_id, bounds=[]):
-        taxon_range_path = os.path.join(self.config["taxon_ranges_path"], f'{taxon_id}.csv')
+        taxon_range_path = os.path.join(self.config["taxon_ranges_path"], f"{taxon_id}.csv")
         if not os.path.exists(taxon_range_path):
             return None
         taxon_range_df = pd.read_csv(taxon_range_path, names=["h3_04"], header=None). \
@@ -328,7 +337,9 @@ class InatInferrer:
         return dict(zip(taxon_range_df.index.astype(str), taxon_range_df["value"]))
 
     def h3_04_taxon_range_comparison(self, taxon_id, bounds=[]):
-        geomodel_results = self.h3_04_geo_results_for_taxon(taxon_id, bounds, thresholded=True) or {}
+        geomodel_results = self.h3_04_geo_results_for_taxon(
+            taxon_id, bounds, thresholded=True
+        ) or {}
         taxon_range_results = self.h3_04_taxon_range(taxon_id, bounds) or {}
         combined_results = {}
         for cell_key in geomodel_results:
@@ -394,7 +405,7 @@ class InatInferrer:
 
         # query for cells wtihin the buffered bounds, and potentially
         # on the other side of the antimeridian
-        query = f'lat >= {bounds[0] - buffer} and lat <= {bounds[2] + buffer} and ' + \
-            f' ((lng >= {bounds[1] - buffer} and lng <= {bounds[3] + buffer})' + \
-            f' {antimedirian_condition})'
+        query = f"lat >= {bounds[0] - buffer} and lat <= {bounds[2] + buffer} and " + \
+            f" ((lng >= {bounds[1] - buffer} and lng <= {bounds[3] + buffer})" + \
+            f" {antimedirian_condition})"
         return geo_df.query(query)

@@ -10,10 +10,10 @@ class VisionInferrer:
     # initialize the TF model given the configured path
     def prepare_tf_model(self):
         # disable GPU processing
-        tf.config.set_visible_devices([], 'GPU')
+        tf.config.set_visible_devices([], "GPU")
         visible_devices = tf.config.get_visible_devices()
         for device in visible_devices:
-            assert device.device_type != 'GPU'
+            assert device.device_type != "GPU"
 
         self.vision_model = tf.keras.models.load_model(self.model_path, compile=False)
 

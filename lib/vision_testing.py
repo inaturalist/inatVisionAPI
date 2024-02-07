@@ -1,6 +1,4 @@
-import csv
 import os
-import urllib
 import hashlib
 import magic
 import time
@@ -34,7 +32,7 @@ class VisionTesting:
         print("Models:")
         for index, model_config in enumerate(config["models"]):
             print(json.dumps(model_config, indent=4))
-            model_name = model_config["name"] if "name" in model_config else f'Model {index}'
+            model_name = model_config["name"] if "name" in model_config else f"Model {index}"
             model_config["name"] = model_name
             for score_type in score_types:
                 self.scores[score_type]["vision"][index] = []
@@ -134,10 +132,16 @@ class VisionTesting:
                     (sum(top5_distance_scores) / metrics["count"]) * 100, 2)
                 metrics["top10∆"] = round(
                     (sum(top10_distance_scores) / metrics["count"]) * 100, 2)
-                metrics["avg∆"] = round(
-                    (mean(self.scores["average_ancestor_distance_scores"][method][index]) / metrics["count"]) * 100, 2)
-                metrics["sum∆"] = round(
-                    (mean(self.scores["sum_ancestor_distance_scores"][method][index]) / metrics["count"]) * 100, 2)
+                metrics["avg∆"] = round((
+                    mean(
+                        self.scores["average_ancestor_distance_scores"][method][index]
+                    ) / metrics["count"]
+                ) * 100, 2)
+                metrics["sum∆"] = round((
+                    mean(
+                        self.scores["sum_ancestor_distance_scores"][method][index]
+                    ) / metrics["count"]
+                ) * 100, 2)
                 all_metrics[method] = metrics
 
             print("method  " + "\t" + "\t".join(all_metrics["vision"].keys()))
@@ -146,16 +150,6 @@ class VisionTesting:
                 print(f"{stat_label.ljust(10)}\t" + "\t".join(
                     str(value) for value in all_metrics[method].values()))
             print("\n")
-
-    # NOTE: this is assuming no conversion is needed.
-    # Ideally we'd reuse the inat_inferrer prepare_image_for_inference
-    def prepare_image_for_inference(self, cache_path):
-        image = tf.io.read_file(cache_path)
-        image = tf.image.decode_jpeg(image, channels=3)
-        image = tf.image.convert_image_dtype(image, tf.float32)
-        image = tf.image.central_crop(image, 0.875)
-        image = tf.image.resize(image, [299, 299], tf.image.ResizeMethod.NEAREST_NEIGHBOR)
-        return tf.expand_dims(image, 0)
 
     def assess_top_results(self, observation, top_results):
         match_index = None
@@ -194,7 +188,7 @@ class VisionTesting:
         cache_path = await self.download_photo_async(observation.photo_url)
         if cache_path is None or not os.path.exists(cache_path):
             return False
-        if observation.lat == '' or observation.lng == '':
+        if observation.lat == "" or observation.lng == "":
             return False
 
         iconic_taxon_id = None
@@ -215,7 +209,7 @@ class VisionTesting:
                 )
             except Exception as e:
                 print(e)
-                print(f'\nError scoring observation {observation.observation_id}')
+                print(f"\nError scoring observation {observation.observation_id}")
                 return False
         return inferrer_scores
 
@@ -237,7 +231,9 @@ class VisionTesting:
             if result_ancestor_match_index is None:
                 result_ancestor_match_index = len(reversed_target_ancestors)
             # calculate a score of how far from species the result matched the target
-            ancestor_distance_scores.append((1 - (result_ancestor_match_index / len(reversed_target_ancestors)))**2)
+            ancestor_distance_scores.append((1 - (
+                result_ancestor_match_index / len(reversed_target_ancestors)
+            ))**2)
         return ancestor_distance_scores
 
     def append_to_aggregate_results(self, observation, inferrer_scores):
@@ -318,5 +314,8 @@ class VisionTesting:
     def report_progress(self):
         if self.processed_counter % 10 == 0:
             total_time = round(time.time() - self.start_time, 3)
-            remaining_time = round((self.limit - self.processed_counter) / (self.processed_counter / total_time), 3)
-            print(f'Processed {self.processed_counter} in {total_time} sec\testimated {remaining_time} sec remaining')
+            remaining_time = round((
+                self.limit - self.processed_counter
+            ) / (self.processed_counter / total_time), 3)
+            print(f"Processed {self.processed_counter} in {total_time} sec\t"
+                  f"estimated {remaining_time} sec remaining")
