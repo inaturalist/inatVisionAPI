@@ -119,7 +119,7 @@ class InatVisionAPI:
         # set a rank level cutoff on higher taxa to include in results
         if iteration > 0:
             remaining_results = remaining_results.query(
-                "rank_level <= 30"
+                "rank_level < 50"
             )
         # after setting a cutoff, get the parent IDs of the remaining taxa
         parent_taxon_ids = remaining_results["parent_taxon_id"].values  # noqa: F841
@@ -290,7 +290,10 @@ class InatVisionAPI:
         if not os.path.exists(cache_path):
             urllib.request.urlretrieve(
                 data["results"][0]["photos"][0]["url"].replace("square", "medium"), cache_path)
-        latlng = data["results"][0]["location"].split(",")
+        if data["results"][0]["location"] is None:
+            latlng = [None, None]
+        else:
+            latlng = data["results"][0]["location"].split(",")
         # return the path to the cached image, coordinates, and iconic taxon
         return cache_path, latlng[0], latlng[1], data["results"][0]["taxon"]["iconic_taxon_id"]
 
