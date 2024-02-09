@@ -278,6 +278,7 @@ class InatInferrer:
             print("\nTree of aggregated results:")
             ModelTaxonomyDataframe.print(thresholded_results, display_taxon_lambda=(
                 lambda row: f"{row.name}    ["
+                            f"ID:{row.taxon_id}, "
                             f"V:{round(row.aggregated_vision_score, 4)}, "
                             f"G:{round(row.aggregated_geo_score, 4)}, "
                             f"C:{round(row.aggregated_combined_score, 4)}, "

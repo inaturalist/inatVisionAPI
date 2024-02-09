@@ -89,7 +89,7 @@ class ModelTestDataExporter:
             await self.fetch_more_data()
 
     async def fetch_more_data(self):
-        self.queue = asyncio.Queue(ModelTestDataExporter.N_WORKERS)
+        self.queue = asyncio.Queue()
         self.workers = [asyncio.create_task(self.worker_task())
                         for _ in range(ModelTestDataExporter.N_WORKERS)]
         min_pages_remaining = math.ceil(
@@ -97,7 +97,7 @@ class ModelTestDataExporter:
         )
         print(f"Queueing {min_pages_remaining} workers")
         for i in range(min_pages_remaining):
-            await self.queue.put(i)
+            self.queue.put_nowait(i)
         await self.queue.join()
         for worker in self.workers:
             worker.cancel()
