@@ -76,6 +76,7 @@ class InatVisionAPI:
         count = int(request.args["count"])
         delay = int(request.args["delay"])
         self.inferrer.TIME_DOWNLOAD = 0
+        self.inferrer.TIME_API = 0
         self.inferrer.TIME_RESIZE = 0
         self.inferrer.TIME_TOTAL = 0
         
