@@ -70,7 +70,40 @@ class InatVisionAPI:
             return f'Unknown taxon_id {taxon_id}', 422
         return results_dict
 
+    def bench_route(self):
+        start = request.args["start"]
+        count = request.args["count"]
+        self.inferrer.TIME_DOWNLOAD = 0
+        self.inferrer.TIME_RESIZE = 0
+        self.inferrer.TIME_TOTAL = 0
+        
+        ALL_SCORES = ""
+
+        for observation_id in range(start, start + count): 
+            print("TIME-EXP: score "+observation_id)
+            START_TIME_TOTAL = time.time()
+            image_uuid = "downloaded-obs-" + observation_id
+            START_TIME_DOWNLOAD = time.time()
+            file_path, lat, lng, iconic_taxon_id = self.download_observation(
+                observation_id, image_uuid)
+            END_TIME_DOWNLOAD = time.time()
+            self.inferrer.TIME_DOWNLOAD = self.inferrer.TIME_DOWNLOAD + (END_TIME_DOWNLOAD - START_TIME_DOWNLOAD)
+            print("TIME-EXP: TIME_DOWNLOAD "+str(self.inferrer.TIME_DOWNLOAD))
+            scores = self.score_image(form, file_path, lat, lng, iconic_taxon_id, geomodel)
+            END_TIME_TOTAL = time.time()
+            self.inferrer.TIME_TOTAL = self.inferrer.TIME_TOTAL + (END_TIME_TOTAL - START_TIME_TOTAL)
+            print("TIME-EXP: TIME_TOTAL "+str(self.inferrer.TIME_TOTAL))
+            ALL_SCORES = ALL_SCORES + "\n" + scores
+
+        result = "TOTAL = " + str(self.inferrer.TIME_TOTAL) + "\n" + \
+                 "DOWNLOAD = " + str(self.inferrer.TIME_DOWNLOAD) + "\n" + \
+                 "RESIZE = " + str(self.inferrer.TIME_RESIZE) + "\n" + \
+                 ALL_SCORES
+
+        return result
+
     def index_route(self):
+        START_TIME_TOTAL = time.time()
         form = ImageForm()
         if "observation_id" in request.args:
             observation_id = request.args["observation_id"]
@@ -90,8 +123,11 @@ class InatVisionAPI:
             iconic_taxon_id = None
             if observation_id:
                 image_uuid = "downloaded-obs-" + observation_id
+                START_TIME_DOWNLOAD = time.time()
                 file_path, lat, lng, iconic_taxon_id = self.download_observation(
                     observation_id, image_uuid)
+                END_TIME_DOWNLOAD = time.time()
+                self.inferrer.TIME_DOWNLOAD = self.inferrer.TIME_DOWNLOAD + (END_TIME_DOWNLOAD - START_TIME_DOWNLOAD)
             else:
                 image_uuid = str(uuid.uuid4())
                 file_path = self.process_upload(form.image.data, image_uuid)
@@ -101,6 +137,8 @@ class InatVisionAPI:
                 return render_template("home.html")
 
             scores = self.score_image(form, file_path, lat, lng, iconic_taxon_id, geomodel)
+            END_TIME_TOTAL = time.time()
+            self.inferrer.TIME_TOTAL = self.inferrer.TIME_TOTAL + (END_TIME_TOTAL - START_TIME_TOTAL)
             InatVisionAPI.write_logstash(
                 image_uuid, file_path, request_start_datetime, request_start_time)
             return scores

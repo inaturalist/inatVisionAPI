@@ -18,6 +18,9 @@ pd.options.mode.chained_assignment = None
 
 MINIMUM_GEO_SCORE = 0.005
 
+TIME_DOWNLOAD = 0
+TIME_RESIZE = 0
+TIME_TOTAL = 0
 
 class InatInferrer:
 
@@ -73,6 +76,7 @@ class InatInferrer:
             )
 
     def prepare_image_for_inference(self, file_path):
+        START_TIME_RESIZE = time.time()
         mime_type = magic.from_file(file_path, mime=True)
         # attempt to convert non jpegs
         if mime_type != "image/jpeg":
@@ -84,7 +88,11 @@ class InatInferrer:
         image = tf.image.convert_image_dtype(image, tf.float32)
         image = tf.image.central_crop(image, 0.875)
         image = tf.image.resize(image, [299, 299], tf.image.ResizeMethod.NEAREST_NEIGHBOR)
-        return tf.expand_dims(image, 0)
+        result = tf.expand_dims(image, 0)
+        END_TIME_RESIZE = time.time()
+        TIME_RESIZE = TIME_RESIZE + (END_TIME_RESIZE - START_TIME_RESIZE)
+        print("TIME-EXP: TIME_RESIZE "+str(TIME_RESIZE))
+        return result;
 
     def vision_predict(self, image, debug=False):
         if debug:
