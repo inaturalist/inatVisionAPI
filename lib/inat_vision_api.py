@@ -17,6 +17,7 @@ class InatVisionAPI:
         self.app = Flask(__name__)
         self.app.secret_key = config["app_secret"]
         self.upload_folder = "static/"
+        self.app.add_url_rule("/bench", "bench", self.bench_route, methods=["GET"])
         self.app.add_url_rule("/", "index", self.index_route, methods=["GET", "POST"])
         self.app.add_url_rule("/h3_04", "h3_04", self.h3_04_route, methods=["GET"])
         self.app.add_url_rule("/h3_04_taxon_range", "h3_04_taxon_range",
