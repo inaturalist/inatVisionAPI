@@ -81,8 +81,9 @@ class InatVisionAPI:
         ALL_SCORES = ""
         TOTAL_OBS = 0
 
-        for observation_id in range(start, start + count): 
-            print("TIME-EXP: score "+observation_id)
+        for i in range(start, start + count): 
+            observation_id = str( i )
+            print("TIME-EXP: score " + observation_id)
             START_TIME_TOTAL = time.time()
             image_uuid = "downloaded-obs-" + observation_id
             START_TIME_DOWNLOAD = time.time()
