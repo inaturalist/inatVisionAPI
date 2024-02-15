@@ -88,7 +88,7 @@ class InatVisionAPI:
             form.aggregated.data = "false"
             form.geomodel.data = "true"
             geomodel = form.geomodel.data
-            
+
             print("TIME-EXP: score " + observation_id)
             START_TIME_TOTAL = time.time()
             image_uuid = "downloaded-obs-" + observation_id
@@ -102,7 +102,7 @@ class InatVisionAPI:
                 END_TIME_TOTAL = time.time()
                 self.inferrer.TIME_TOTAL = self.inferrer.TIME_TOTAL + (END_TIME_TOTAL - START_TIME_TOTAL)
                 print("TIME-EXP: TIME_TOTAL "+str(self.inferrer.TIME_TOTAL))
-                ALL_SCORES = ALL_SCORES + "\n" + scores
+                ALL_SCORES = ALL_SCORES + "\n" + str( scores )
 
         result = "TOTAL = " + str(self.inferrer.TIME_TOTAL) + "\n" + \
                  "DOWNLOAD = " + str(self.inferrer.TIME_DOWNLOAD) + "\n" + \
