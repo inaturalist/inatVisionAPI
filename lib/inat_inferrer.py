@@ -91,7 +91,9 @@ class InatInferrer:
 
         filename = os.path.basename(file_path)
         output_file_path = '/home/inaturalist/vision/save/' + filename
-        image_bytes = tf.io.encode_jpeg(image)
+
+        resized_image_uint8 = tf.cast(image, tf.uint8)
+        image_bytes = tf.io.encode_jpeg(resized_image_uint8)
         with tf.io.gfile.GFile(output_file_path, 'wb') as f:
             f.write(image_bytes.numpy())
 
