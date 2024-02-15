@@ -92,7 +92,7 @@ class InatVisionAPI:
             
             time.sleep(delay)
 
-            print("TIME-EXP: #" + TOTAL_OBS)
+            print("TIME-EXP: #" + str(TOTAL_OBS) )
             print("TIME-EXP: score " + observation_id)
             START_TIME_TOTAL = time.time()
             image_uuid = "downloaded-obs-" + observation_id
