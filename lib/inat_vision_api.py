@@ -83,19 +83,19 @@ class InatVisionAPI:
 
         for i in range(start, start + count): 
             observation_id = str( i )
+            form = ImageForm()
+            form.score_without_geo.data = "true"
+            form.aggregated.data = "true"
+
             print("TIME-EXP: score " + observation_id)
             START_TIME_TOTAL = time.time()
             image_uuid = "downloaded-obs-" + observation_id
-            START_TIME_DOWNLOAD = time.time()
             file_path, lat, lng, iconic_taxon_id = self.download_observation(
                 observation_id, image_uuid)
-            END_TIME_DOWNLOAD = time.time()
             if file_path is None:
                 print("TIME-EXP: obs not found")
             else:
                 TOTAL_OBS = TOTAL_OBS + 1        
-                self.inferrer.TIME_DOWNLOAD = self.inferrer.TIME_DOWNLOAD + (END_TIME_DOWNLOAD - START_TIME_DOWNLOAD)
-                print("TIME-EXP: TIME_DOWNLOAD "+str(self.inferrer.TIME_DOWNLOAD))
                 scores = self.score_image(form, file_path, lat, lng, iconic_taxon_id, geomodel)
                 END_TIME_TOTAL = time.time()
                 self.inferrer.TIME_TOTAL = self.inferrer.TIME_TOTAL + (END_TIME_TOTAL - START_TIME_TOTAL)
@@ -246,8 +246,12 @@ class InatVisionAPI:
             return None, None, None
         # download the first image if it isn't already cached
         if not os.path.exists(cache_path):
+            START_TIME_DOWNLOAD = time.time()
             urllib.request.urlretrieve(
                 data["results"][0]["photos"][0]["url"].replace("square", "medium"), cache_path)
+            END_TIME_DOWNLOAD = time.time()
+            self.inferrer.TIME_DOWNLOAD = self.inferrer.TIME_DOWNLOAD + (END_TIME_DOWNLOAD - START_TIME_DOWNLOAD)
+            print("TIME-EXP: TIME_DOWNLOAD "+str(self.inferrer.TIME_DOWNLOAD))
         latlng = data["results"][0]["location"].split(",")
         # return the path to the cached image, coordinates, and iconic taxon
         return cache_path, latlng[0], latlng[1], data["results"][0]["taxon"]["iconic_taxon_id"]

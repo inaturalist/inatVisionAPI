@@ -90,8 +90,8 @@ class InatInferrer:
         image = tf.image.resize(image, [299, 299], tf.image.ResizeMethod.NEAREST_NEIGHBOR)
         result = tf.expand_dims(image, 0)
         END_TIME_RESIZE = time.time()
-        TIME_RESIZE = TIME_RESIZE + (END_TIME_RESIZE - START_TIME_RESIZE)
-        print("TIME-EXP: TIME_RESIZE "+str(TIME_RESIZE))
+        self.TIME_RESIZE = self.TIME_RESIZE + (END_TIME_RESIZE - START_TIME_RESIZE)
+        print("TIME-EXP: TIME_RESIZE "+str(self.TIME_RESIZE))
         return result;
 
     def vision_predict(self, image, debug=False):
