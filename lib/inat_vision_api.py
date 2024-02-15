@@ -87,7 +87,8 @@ class InatVisionAPI:
             form.score_without_geo.data = "false"
             form.aggregated.data = "false"
             form.geomodel.data = "true"
-
+            geomodel = form.geomodel.data
+            
             print("TIME-EXP: score " + observation_id)
             START_TIME_TOTAL = time.time()
             image_uuid = "downloaded-obs-" + observation_id
