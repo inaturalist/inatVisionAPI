@@ -90,25 +90,10 @@ class InatInferrer:
         image = tf.image.resize(image, [299, 299], tf.image.ResizeMethod.NEAREST_NEIGHBOR)
 
         filename = os.path.basename(file_path)
-
-        # Convert the TensorFlow tensor to a NumPy array
         resized_image_np = image.numpy()
-
-        # Convert the NumPy array to a PIL Image
         pil_image = Image.fromarray(np.uint8(resized_image_np))
-
-        # Save the PIL Image to a file
-        
         output_file_path = '/home/inaturalist/vision/save/' + filename
         pil_image.save(output_file_path)
-
-
-        image_bytes = tf.io.encode_jpeg(image)
-        output_file_path = '/home/inaturalist/vision/save2/' + filename
-        # Write the bytes to a file
-        with tf.io.gfile.GFile(output_file_path, 'wb') as f:
-            f.write(image_bytes.numpy())
-
 
         result = tf.expand_dims(image, 0)
         END_TIME_RESIZE = time.time()
