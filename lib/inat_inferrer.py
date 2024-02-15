@@ -29,6 +29,7 @@ class InatInferrer:
         self.upload_folder = "static/"
         self.TIME_DOWNLOAD = 0
         self.TIME_RESIZE = 0
+        self.TIME_API = 0
         self.TIME_TOTAL = 0
 
     def setup_taxonomy(self, config):

@@ -89,6 +89,7 @@ class InatVisionAPI:
             form.geomodel.data = "true"
             geomodel = form.geomodel.data
 
+            print("TIME-EXP: #" + TOTAL_OBS)
             print("TIME-EXP: score " + observation_id)
             START_TIME_TOTAL = time.time()
             image_uuid = "downloaded-obs-" + observation_id
@@ -102,13 +103,12 @@ class InatVisionAPI:
                 END_TIME_TOTAL = time.time()
                 self.inferrer.TIME_TOTAL = self.inferrer.TIME_TOTAL + (END_TIME_TOTAL - START_TIME_TOTAL)
                 print("TIME-EXP: TIME_TOTAL "+str(self.inferrer.TIME_TOTAL))
-                ALL_SCORES = ALL_SCORES + "\n" + str( scores )
 
         result = "TOTAL = " + str(self.inferrer.TIME_TOTAL) + "\n" + \
                  "DOWNLOAD = " + str(self.inferrer.TIME_DOWNLOAD) + "\n" + \
+                 "API = " + str(self.inferrer.TIME_API) + "\n" + \
                  "RESIZE = " + str(self.inferrer.TIME_RESIZE) + "\n" + \
-                 "TOTAL_OBS = " + str(TOTAL_OBS) + "\n" + \
-                 ALL_SCORES
+                 "TOTAL_OBS = " + str(TOTAL_OBS) 
 
         return result
 
@@ -237,11 +237,13 @@ class InatVisionAPI:
 
     # Fetch the observation metadata and first image using the iNaturalist API
     def download_observation(self, observation_id, image_uuid):
+        START_TIME_API = time.time()            
         url = "https://api.inaturalist.org/v1/observations/" + observation_id
         cache_path = os.path.join(self.upload_folder, image_uuid) + ".jpg"
         # fetch observation details using the API
         response = urllib.request.urlopen(url)
         data = json.loads(response.read())
+        END_TIME_API = time.time()            
         if (data is None or data["results"] is None or len ( data["results"] ) == 0 or data["results"][0] is
             None or data["results"][0]["photos"] is None or len ( data["results"][0]["photos"] ) == 0 or data["results"][0]["photos"][0] is
                 None or data["results"][0]["photos"][0]["url"] is None
@@ -253,7 +255,9 @@ class InatVisionAPI:
             urllib.request.urlretrieve(
                 data["results"][0]["photos"][0]["url"].replace("square", "medium"), cache_path)
             END_TIME_DOWNLOAD = time.time()
+            self.inferrer.TIME_API = self.inferrer.TIME_API + (END_TIME_API - START_TIME_API)
             self.inferrer.TIME_DOWNLOAD = self.inferrer.TIME_DOWNLOAD + (END_TIME_DOWNLOAD - START_TIME_DOWNLOAD)
+            print("TIME-EXP: TIME_API "+str(self.inferrer.TIME_API))
             print("TIME-EXP: TIME_DOWNLOAD "+str(self.inferrer.TIME_DOWNLOAD))
         latlng = data["results"][0]["location"].split(",")
         # return the path to the cached image, coordinates, and iconic taxon
