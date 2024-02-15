@@ -72,8 +72,8 @@ class InatVisionAPI:
         return results_dict
 
     def bench_route(self):
-        start = request.args["start"]
-        count = request.args["count"]
+        start = int(request.args["start"])
+        count = int(request.args["count"])
         self.inferrer.TIME_DOWNLOAD = 0
         self.inferrer.TIME_RESIZE = 0
         self.inferrer.TIME_TOTAL = 0
