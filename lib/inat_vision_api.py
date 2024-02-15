@@ -74,6 +74,7 @@ class InatVisionAPI:
     def bench_route(self):
         start = int(request.args["start"])
         count = int(request.args["count"])
+        delay = int(request.args["delay"])
         self.inferrer.TIME_DOWNLOAD = 0
         self.inferrer.TIME_RESIZE = 0
         self.inferrer.TIME_TOTAL = 0
@@ -88,6 +89,8 @@ class InatVisionAPI:
             form.aggregated.data = "false"
             form.geomodel.data = "true"
             geomodel = form.geomodel.data
+            
+            time.sleep(delay)
 
             print("TIME-EXP: #" + TOTAL_OBS)
             print("TIME-EXP: score " + observation_id)
