@@ -242,7 +242,7 @@ class InatVisionAPI:
         # fetch observation details using the API
         response = urllib.request.urlopen(url)
         data = json.loads(response.read())
-        if (data is None or data["results"] is None or data["results"][0] is
+        if (data is None or data["results"] is None or len ( data["results"] ) = 0 or data["results"][0] is
             None or data["results"][0]["photos"] is None or data["results"][0]["photos"][0] is
                 None or data["results"][0]["photos"][0]["url"] is None):
             return None, None, None
