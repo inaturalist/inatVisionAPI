@@ -84,8 +84,9 @@ class InatVisionAPI:
         for i in range(start, start + count): 
             observation_id = str( i )
             form = ImageForm()
-            form.score_without_geo.data = "true"
-            form.aggregated.data = "true"
+            form.score_without_geo.data = "false"
+            form.aggregated.data = "false"
+            form.geomodel.data = "true"
 
             print("TIME-EXP: score " + observation_id)
             START_TIME_TOTAL = time.time()

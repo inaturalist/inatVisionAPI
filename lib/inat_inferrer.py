@@ -18,10 +18,6 @@ pd.options.mode.chained_assignment = None
 
 MINIMUM_GEO_SCORE = 0.005
 
-TIME_DOWNLOAD = 0
-TIME_RESIZE = 0
-TIME_TOTAL = 0
-
 class InatInferrer:
 
     def __init__(self, config):
@@ -31,6 +27,9 @@ class InatInferrer:
         self.setup_elevation_dataframe(config)
         self.setup_geo_model(config)
         self.upload_folder = "static/"
+        self.TIME_DOWNLOAD = 0
+        self.TIME_RESIZE = 0
+        self.TIME_TOTAL = 0
 
     def setup_taxonomy(self, config):
         self.taxonomy = ModelTaxonomyDataframe(
