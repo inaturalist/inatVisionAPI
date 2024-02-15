@@ -244,7 +244,7 @@ class InatVisionAPI:
         data = json.loads(response.read())
         if (data is None or data["results"] is None or len ( data["results"] ) == 0 or data["results"][0] is
             None or data["results"][0]["photos"] is None or len ( data["results"][0]["photos"] ) == 0 or data["results"][0]["photos"][0] is
-                None or data["results"][0]["photos"][0]["url"] is None):
+                None or data["results"][0]["photos"][0]["url"] is None or data["results"][0]["taxon"] is None or data["results"][0]["taxon"]["iconic_taxon_id"] is None):
             return None, None, None, None
         # download the first image if it isn't already cached
         if not os.path.exists(cache_path):
