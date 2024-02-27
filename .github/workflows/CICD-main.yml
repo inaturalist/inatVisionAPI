@@ -35,7 +35,9 @@ jobs:
         context: .
         file: ./Dockerfile
         push: true
-        tags: ${{ secrets.DOCKERHUB_USERNAME }}/inatvisionapi:${{ github.sha }}
+        tags: |
+          ${{ secrets.DOCKERHUB_USERNAME }}/inatvisionapi:${{ github.sha }}
+          ${{ secrets.DOCKERHUB_USERNAME }}/inatvisionapi:latest
 
     - name: Build/Push Main inatvisionapi-cleanup
       uses: docker/build-push-action@v5
@@ -43,7 +45,9 @@ jobs:
         context: .
         file: ./Dockerfile-cleanup
         push: true
-        tags: ${{ secrets.DOCKERHUB_USERNAME }}/inatvisionapi-cleanup:${{ github.sha }}
+        tags: |
+          ${{ secrets.DOCKERHUB_USERNAME }}/inatvisionapi-cleanup:${{ github.sha }}
+          ${{ secrets.DOCKERHUB_USERNAME }}/inatvisionapi-cleanup:latest
 
   notify-slack:
     name: Notify Slack
