@@ -1,5 +1,6 @@
 import click
 import json
+import asyncio
 
 
 @click.command()
@@ -13,16 +14,16 @@ import json
 @click.option("--taxon_id", type=int, help="Export observations in this taxon.")
 def test(**args):
     # some libraries are slow to import, so wait until command is validated and properly invoked
-    from lib.model_test_data_exporter import ModelTestDataExporter
+    from lib.model_test_data_export_manager import ModelTestDataExportManager
     print("\nArguments:")
     print(json.dumps(args, indent=4))
     print("\nInitializing ModelTestDataExporter...\n")
-    model_test_data_exporter = ModelTestDataExporter(**args)
+    model_test_data_exporter = ModelTestDataExportManager(**args)
     print("Exporting data...\n")
     if "standard_set" in args and args["standard_set"]:
-        model_test_data_exporter.generate_standard_set()
+        asyncio.run(model_test_data_exporter.generate_standard_set())
     else:
-        model_test_data_exporter.generate_from_cmd_args()
+        asyncio.run(model_test_data_exporter.generate_from_cmd_args())
     print("\nDone\n")
 
 
