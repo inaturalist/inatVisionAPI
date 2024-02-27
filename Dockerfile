@@ -13,7 +13,7 @@ RUN pip install --upgrade pip
 WORKDIR /home/inaturalist/vision
 
 # Copy the dependencies file to the working directory
-COPY --chown=inaturalist:inaturalist ./requirements-production.txt /home/inaturalist/vision/requirements.txt
+COPY --chown=inaturalist:inaturalist ./requirements.txt /home/inaturalist/vision/requirements.txt
 
 # Install dependencies
 RUN UWSGI_EMBED_PLUGINS=stats_pusher_statsd pip install -r requirements.txt
