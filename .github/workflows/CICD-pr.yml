@@ -1,0 +1,8 @@
+name: Vision CI/CD Pull Request
+
+on:
+  pull_request:
+
+jobs:
+  build-and-test:
+    uses: ./.github/workflows/CI-build-test.yml
