@@ -9,13 +9,13 @@ ENV PATH="/home/inaturalist/.local/bin:${PATH}"
 
 RUN pip install --upgrade pip
 
-# set the working directory in the container
+# Set the working directory in the container
 WORKDIR /home/inaturalist/vision
 
-# copy the dependencies file to the working directory
-COPY --chown=inaturalist:inaturalist ./requirements-production.txt /home/inaturalist/vision/requirements.txt
+# Copy the dependencies file to the working directory
+COPY --chown=inaturalist:inaturalist ./requirements.txt /home/inaturalist/vision/requirements.txt
 
-# install dependencies
+# Install dependencies
 RUN UWSGI_EMBED_PLUGINS=stats_pusher_statsd pip install -r requirements.txt
 
 # Copy app and libs
