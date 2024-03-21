@@ -7,13 +7,18 @@ jobs:
   build-and-test:
     name: Build/Test 
     runs-on: ubuntu-20.04
-    steps:    
+    strategy:
+      matrix:
+        python-version:
+          - 3.8.10
+          - 3.11.6
+    steps:
     - uses: actions/checkout@v4
 
-    - name: Use Python
+    - name: Use Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
       with:
-        python-version: '3.11.6'
+        python-version: ${{ matrix.python-version }}
         cache: 'pip'
 
     - name: Install dependencies
