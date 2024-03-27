@@ -7,39 +7,53 @@ on:
       - '!main'
 
 jobs:
+  pre-build:
+    uses: ./.github/workflows/CI-pre-build.yml
+
   build-and-test:
-    name: Build/Test
-    runs-on: ubuntu-20.04
-    steps:
-    - uses: actions/checkout@v4
+    needs: pre-build
+    uses: ./.github/workflows/CI-build-test.yml
 
   build-and-push-dev-docker-image:
-    name: Build/Push Dev Docker Image
+    name: Build/Push Dev Docker Image 
+    needs: pre-build
     runs-on: ubuntu-20.04
-    steps:
+    steps:    
     - uses: actions/checkout@v4
 
     - name: Login to Docker Hub
       uses: docker/login-action@v3
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
-
+        password: ${{ secrets.DOCKERHUB_TOKEN }}  
+    
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
-
-    - name: Build/Push dev vision-api
+    
+    - name: Build/Push Dev inatvisionapi
       uses: docker/build-push-action@v5
       with:
         context: .
         file: ./Dockerfile
         push: true
-        tags: ${{ secrets.DOCKERHUB_USERNAME }}/vision-api:${{ github.ref_name }}
+        tags: ${{ secrets.DOCKERHUB_USERNAME }}/inatvisionapi:${{ github.ref_name }}
 
-    - name: Build/Push dev vision-cleanup
+    - name: Build/Push Dev inatvisionapi-cleanup
       uses: docker/build-push-action@v5
       with:
         context: .
         file: ./Dockerfile-cleanup
         push: true
-        tags: ${{ secrets.DOCKERHUB_USERNAME }}/vision-cleanup:${{ github.ref_name }}
+        tags: ${{ secrets.DOCKERHUB_USERNAME }}/inatvisionapi-cleanup:${{ github.ref_name }}
+
+  notify-slack:
+    name: Notify Slack
+    needs: build-and-push-dev-docker-image
+    if: ${{ success() || failure() }}
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: iRoachie/slack-github-actions@v2.3.2
+      if: env.SLACK_WEBHOOK_URL != null
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_BUILDS_WEBHOOK_URL }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
