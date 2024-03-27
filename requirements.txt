@@ -15,6 +15,7 @@ numpy==1.23.5;python_version=="3.8"
 pandas==2.1.2;python_version>="3.11"
 pandas==2.0.3;python_version=="3.8"
 pillow==10.2.0
+pipenv==2023.12.1
 prison==0.2.1
 python-magic==0.4.27
 PyYAML==6.0.1

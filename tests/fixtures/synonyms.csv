@@ -1,2 +1,2 @@
-taxon_id,synonym_id,synonym_rank_level,synonym_name
-979668,979668,10.0,Corvus enca
+model_taxon_id,parent_taxon_id,taxon_id,rank_level,name
+979668,7998,979668,10.0,Corvus enca

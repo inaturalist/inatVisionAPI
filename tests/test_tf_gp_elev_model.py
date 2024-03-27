@@ -16,7 +16,7 @@ class TestTfGpModel:
         TFGeoPriorModelElev(model_path)
         tf.keras.models.load_model.assert_called_once_with(
             model_path,
-            custom_objects={'ResLayer': ResLayer},
+            custom_objects={"ResLayer": ResLayer},
             compile=False
         )
 

@@ -89,15 +89,15 @@ class ModelTestDataExporter:
             await self.fetch_more_data()
 
     async def fetch_more_data(self):
-        self.queue = asyncio.Queue(ModelTestDataExporter.N_WORKERS)
+        self.queue = asyncio.Queue()
         self.workers = [asyncio.create_task(self.worker_task())
                         for _ in range(ModelTestDataExporter.N_WORKERS)]
         min_pages_remaining = math.ceil(
             (self.max_results / ModelTestDataExporter.API_REQUEST_PER_PAGE)
         )
-        print(f'Queueing {min_pages_remaining} workers')
+        print(f"Queueing {min_pages_remaining} workers")
         for i in range(min_pages_remaining):
-            await self.queue.put(i)
+            self.queue.put_nowait(i)
         await self.queue.join()
         for worker in self.workers:
             worker.cancel()
@@ -110,7 +110,7 @@ class ModelTestDataExporter:
         if self.finished():
             return
 
-        print(f'Fetching more results... {self.rows_written} so far')
+        print(f"Fetching more results... {self.rows_written} so far")
         starting_rows_written = self.rows_written
         async with self.session.get(ModelTestDataExporter.API_BASE_URL,
                                     params=self.api_parameters) as response:
@@ -145,6 +145,7 @@ class ModelTestDataExporter:
                 metric_counts[metric["metric"]] -= 1
         if ("location" in metric_counts and metric_counts["location"] < 0) \
            or ("evidence" in metric_counts and metric_counts["evidence"] < 0) \
+           or ("subject" in metric_counts and metric_counts["subject"] < 0) \
            or ("date" in metric_counts and metric_counts["date"] < 0) \
            or ("recent" in metric_counts and metric_counts["recent"] < 0):
             self.used_observations[row["uuid"]] = True
@@ -158,7 +159,8 @@ class ModelTestDataExporter:
             self.used_observations[row["uuid"]] = True
             return
 
-        if row["quality_grade"] == "casual" and not (row["community_taxon_id"] and row["community_taxon_id"] == row["taxon"]["id"]):
+        if row["quality_grade"] == "casual" \
+           and not (row["community_taxon_id"] and row["community_taxon_id"] == row["taxon"]["id"]):
             self.used_observations[row["uuid"]] = True
             return
 

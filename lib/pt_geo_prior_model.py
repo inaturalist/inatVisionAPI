@@ -31,7 +31,7 @@ class PTGeoPriorModel:
             try:
                 filter_taxon = self.taxonomy.df.iloc[filter_taxon_id]
             except Exception as e:
-                print(f'filter_taxon `{filter_taxon_id}` does not exist in the taxonomy')
+                print(f"filter_taxon `{filter_taxon_id}` does not exist in the taxonomy")
                 raise e
         location = np.array([longitude, latitude])[np.newaxis, ...]
         # we're not currently using date inference, so set default values for date

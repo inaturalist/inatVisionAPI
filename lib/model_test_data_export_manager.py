@@ -21,9 +21,9 @@ class ModelTestDataExportManager:
     def export_path(self, filename_addition):
         currentDatetime = datetime.now()
         timestamp = currentDatetime.strftime("%Y%m%d")
-        export_path = f'test-obs-{timestamp}'
+        export_path = f"test-obs-{timestamp}"
         if filename_addition:
-            export_path += f'-{filename_addition}'
+            export_path += f"-{filename_addition}"
         if "filename_suffix" in self.cmd_args and self.cmd_args["filename_suffix"]:
             export_path += "-" + self.cmd_args["filename_suffix"]
         export_path += ".csv"
@@ -38,7 +38,7 @@ class ModelTestDataExportManager:
 
         parameters_string = None
         if api_parameters:
-            parameters_string = "-".join(map(lambda key: f'{key}-{api_parameters[key]}',
+            parameters_string = "-".join(map(lambda key: f"{key}-{api_parameters[key]}",
                                              api_parameters))
         export_path = self.export_path(parameters_string)
         exporter = ModelTestDataExporter(

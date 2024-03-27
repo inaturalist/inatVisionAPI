@@ -18,7 +18,7 @@ class TestInatInferrer:
         )
         tf.keras.models.load_model.assert_any_call(
             inatInferrer.config["tf_geo_elevation_model_path"],
-            custom_objects={'ResLayer': ResLayer},
+            custom_objects={"ResLayer": ResLayer},
             compile=False
         )
 
@@ -78,8 +78,6 @@ class TestInatInferrer:
         scores.geo_threshold = 0.001
         aggregated_scores = inatInferrer.aggregate_results(
             leaf_scores=scores,
-            filter_taxon=None,
-            score_without_geo=False,
             debug=True
         )
         assert "aggregated_vision_score" in aggregated_scores.columns

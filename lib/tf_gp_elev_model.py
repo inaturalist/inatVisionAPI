@@ -11,13 +11,13 @@ class TFGeoPriorModelElev:
 
     def __init__(self, model_path):
         # initialize the geo model for inference
-        tf.config.set_visible_devices([], 'GPU')
+        tf.config.set_visible_devices([], "GPU")
         visible_devices = tf.config.get_visible_devices()
         for device in visible_devices:
-            assert device.device_type != 'GPU'
+            assert device.device_type != "GPU"
         self.gpmodel = tf.keras.models.load_model(
             model_path,
-            custom_objects={'ResLayer': ResLayer},
+            custom_objects={"ResLayer": ResLayer},
             compile=False
         )
 
