@@ -78,8 +78,6 @@ class TestInatInferrer:
         scores.geo_threshold = 0.001
         aggregated_scores = inatInferrer.aggregate_results(
             leaf_scores=scores,
-            filter_taxon=None,
-            score_without_geo=False,
             debug=True
         )
         assert "aggregated_vision_score" in aggregated_scores.columns

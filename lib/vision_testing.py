@@ -4,6 +4,7 @@ import magic
 import time
 import json
 import pandas as pd
+import numpy as np
 import asyncio
 import aiohttp
 import aiofiles
@@ -62,14 +63,14 @@ class VisionTesting:
                 label = exported_data_filename_match.group(1)
                 path = os.path.join(self.cmd_args["data_dir"], file)
                 print(f"\nProcessing {file}")
-                await self.testObservationsAtPath(path, label)
+                await self.test_observations_at_path(path, label)
                 self.display_and_save_results(label)
         else:
             print(f"\nProcessing {self.cmd_args['path']}")
-            await self.testObservationsAtPath(self.cmd_args["path"], self.cmd_args["label"])
+            await self.test_observations_at_path(self.cmd_args["path"], self.cmd_args["label"])
             self.display_and_save_results(self.cmd_args["label"])
 
-    async def testObservationsAtPath(self, path, label):
+    async def test_observations_at_path(self, path, label):
         N_WORKERS = 5
         self.limit = self.cmd_args["limit"] or 100
         target_observation_id = self.cmd_args["observation_id"]
@@ -85,16 +86,6 @@ class VisionTesting:
             ]
             df = pd.read_csv(
                 path,
-                usecols=[
-                    "observation_id",
-                    "observed_on",
-                    "iconic_taxon_id",
-                    "taxon_id",
-                    "taxon_ancestry",
-                    "lat",
-                    "lng",
-                    "photo_url"
-                ],
                 dtype={
                     "iconic_taxon_id": float,
                     "taxon_id": int,
@@ -123,7 +114,7 @@ class VisionTesting:
                     continue
                 observation = self.test_observations[observation_id]
                 await self.test_observation_async(observation)
-                if observation.inferrer_scores is None:
+                if observation.inferrer_results is None:
                     continue
                 self.processed_counter += 1
                 self.report_progress()
@@ -135,19 +126,6 @@ class VisionTesting:
 
             finally:
                 self.queue.task_done()
-
-    # given an x, return the number of scores less than x. Otherwise return the number
-    # of scores that are empty or greather than or equal to 100 (essentially the fails)
-    def top_x(self, x, scores):
-        if x is None:
-            return len(list(filter(lambda score: score is None or score >= 100, scores)))
-        return len(list(filter(lambda score: score is not None and score < x, scores)))
-
-    # same as top_x, but returns the percentage of matching scores instead of the raw count
-    def top_x_percent(self, x, scores):
-        count = len(scores)
-        top_x = self.top_x(x, scores)
-        return round((top_x / count) * 100, 2)
 
     def display_and_save_results(self, label):
         scored_observations = list(filter(
@@ -186,37 +164,55 @@ class VisionTesting:
             method=("method", "max"),
             count=("label", "count"),
         )
-        top1 = all_obs_scores_df.query("matching_index == 0").groupby("run_label").agg(
+        aggs = []
+        aggs.append(all_obs_scores_df.query("matching_index == 0").groupby("run_label").agg(
             top1=("label", "count"),
-        )
-        top5 = all_obs_scores_df.query("matching_index < 5").groupby("run_label").agg(
+        ))
+        aggs.append(all_obs_scores_df.query("matching_index < 5").groupby("run_label").agg(
             top5=("label", "count"),
-        )
-        top10 = all_obs_scores_df.query("matching_index < 10").groupby("run_label").agg(
+        ))
+        aggs.append(all_obs_scores_df.query("matching_index < 10").groupby("run_label").agg(
             top10=("label", "count"),
-        )
-        notIn = all_obs_scores_df.query("matching_index.isna()").groupby("run_label").agg(
+        ))
+        aggs.append(all_obs_scores_df.query("matching_index.isna()").groupby("run_label").agg(
             notIn=("label", "count"),
-        )
-        grouped_stats = grouped_stats.merge(
-            top1, how="left", left_on="run_label", right_on="run_label"
-        )
-        grouped_stats = grouped_stats.merge(
-            top5, how="left", left_on="run_label", right_on="run_label"
-        )
-        grouped_stats = grouped_stats.merge(
-            top10, how="left", left_on="run_label", right_on="run_label"
-        )
-        grouped_stats = grouped_stats.merge(
-            notIn, how="left", left_on="run_label", right_on="run_label"
-        )
+        ))
+        aggs.append(all_obs_scores_df.query("common_ancestor_present == 1").groupby(
+            "run_label"
+        ).agg(
+            withCA=("label", "count"),
+        ))
+        aggs.append(all_obs_scores_df.query("common_ancestor_accurate == 1").groupby(
+            "run_label"
+        ).agg(
+            withRightCA=("label", "count"),
+        ))
+        aggs.append(all_obs_scores_df.query("common_ancestor_present == 1").groupby(
+            "run_label"
+        ).agg(
+            CARankLevel=("common_ancestor_rank_level", "mean"),
+        ))
+        for agg in aggs:
+            grouped_stats = grouped_stats.merge(
+                agg, how="left", left_on="run_label", right_on="run_label"
+            )
         grouped_stats["top1%"] = round((grouped_stats["top1"] / grouped_stats["count"]) * 100, 2)
         grouped_stats["top5%"] = round((grouped_stats["top5"] / grouped_stats["count"]) * 100, 2)
         grouped_stats["top10%"] = round((grouped_stats["top10"] / grouped_stats["count"]) * 100, 2)
         grouped_stats["notIn%"] = round((grouped_stats["notIn"] / grouped_stats["count"]) * 100, 2)
+        grouped_stats["withCA%"] = round((
+            grouped_stats["withCA"] / grouped_stats["count"]
+        ) * 100, 2)
+        grouped_stats["withRightCA%"] = round((
+            grouped_stats["withRightCA"] / grouped_stats["count"]
+        ) * 100, 2)
+        grouped_stats["withRightCAWhenPresent%"] = round((
+            grouped_stats["withRightCA"] / grouped_stats["withCA"]
+        ) * 100, 2)
 
         agg_stats = all_obs_scores_df.groupby("run_label").agg(
             average_results_count=("results_count", "mean"),
+            common_ancestor_pool_size=("common_ancestor_pool_size", "mean"),
             precision=("precision", "mean"),
             recall=("recall", "mean"),
             f1=("f1", "mean")
@@ -225,6 +221,7 @@ class VisionTesting:
             agg_stats, how="left", left_on="run_label", right_on="run_label"
         )
         grouped_stats["average_results_count"] = grouped_stats["average_results_count"].round(4)
+        grouped_stats["common_ancestor_pool_size"] = grouped_stats["common_ancestor_pool_size"].round(4)
         grouped_stats["precision"] = grouped_stats["precision"].round(4)
         grouped_stats["recall"] = grouped_stats["recall"].round(4)
         grouped_stats["f1"] = grouped_stats["f1"].round(4)
@@ -253,7 +250,8 @@ class VisionTesting:
         if observation.iconic_taxon_id != "" and self.cmd_args["filter_iconic"] is not False:
             iconic_taxon_id = observation.iconic_taxon_id
 
-        inferrer_scores = {}
+        inferrer_results = {}
+        summarized_results = {}
         for inferrer_index, inferrer in self.inferrers.items():
             lat = None
             lng = None
@@ -262,75 +260,177 @@ class VisionTesting:
                 lat = observation.lat
                 lng = observation.lng
             try:
-                inferrer_all_scores = inferrer.predictions_for_image(
+                # traditional leaf combined scores, vision * geo
+                leaf_scores = inferrer.predictions_for_image(
                     cache_path, lat, lng, filter_taxon
                 )
-                # only look at the top 100 results for this testing
-                inferrer_scores[inferrer_index] = {
-                    "vision": inferrer_all_scores.sort_values(
-                        "vision_score", ascending=False
-                    ).reset_index(drop=True).head(100),
-                    "combined": inferrer_all_scores.sort_values(
-                        "combined_score", ascending=False
-                    ).reset_index(drop=True).head(100),
-                    "combined_nearby": inferrer_all_scores.query(
-                        "geo_score >= geo_threshold"
-                    ).sort_values(
-                        "combined_score", ascending=False
-                    ).reset_index(drop=True).head(100),
-                }
+                # save some high-level data like top 100 scores, common ancestor
+                inferrer_results[inferrer_index] = self.inferrer_results(
+                    inferrer, observation, leaf_scores
+                )
+                # summarize that high-level data further into the metrics we ultimately want
+                summaries = {}
+                for summary_index, summary in inferrer_results[inferrer_index].items():
+                    summaries[summary_index] = self.summarize_result_subset(
+                        inferrer, observation, summary, summary_index)
+                    # the "cutoff" variant limits the top100 retults into the subset users might
+                    # actually be presented. That means removing results with a score less than
+                    # 0.001 times the top score, and using up to 10 of those. This will give values
+                    # for precision, recall, f1 relative to user experience rather than all results
+                    summaries[f"{summary_index}-cutoff"] = self.summarize_result_subset(
+                        inferrer, observation, summary, summary_index, cutoff=True
+                    )
+                summarized_results[inferrer_index] = summaries
+
             except Exception as e:
                 print(f"Error scoring observation {observation.observation_id}")
                 print(e)
+                print(traceback.format_exc())
                 return
 
-        observation.inferrer_scores = inferrer_scores
-        self.summarize_results(observation)
+        # record the results and summaries with the observation only after all have
+        # finished without exception. This ensures we don't store partial results if some
+        # inferrers fail, and we can later filter our observations without results
+        observation.inferrer_results = inferrer_results
+        observation.summarized_results = summarized_results
+
+    def inferrer_results(self, inferrer, observation, leaf_scores):
+        # aggregation for calculating a common ancestor, using only vision scores
+        vision_aggregated_scores = inferrer.aggregate_results(
+            leaf_scores,
+            score_ratio_cutoff=InatInferrer.COMMON_ANCESTOR_CUTOFF_RATIO,
+            max_leaf_scores_to_consider=InatInferrer.COMMON_ANCESTOR_WINDOW,
+            column_for_cutoff="vision_score"
+        )
+        # aggregation for calculating a common ancestor, using combined scores
+        combined_aggregated_scores = inferrer.aggregate_results(
+            leaf_scores,
+            score_ratio_cutoff=InatInferrer.COMMON_ANCESTOR_CUTOFF_RATIO,
+            max_leaf_scores_to_consider=InatInferrer.COMMON_ANCESTOR_WINDOW,
+            column_for_cutoff="combined_score"
+        )
+
+        # calculate common ancestors and scores for both vision-only, and combined scores
+        vision_common_ancestor = inferrer.common_ancestor_from_aggregated_scores(
+            vision_aggregated_scores, score_to_use="vision_score"
+        )
+
+        combined_common_ancestor = inferrer.common_ancestor_from_aggregated_scores(
+            combined_aggregated_scores, score_to_use="combined_score"
+        )
+
+        # record the top 100 scores of 3 score types: vision only, combined, and combined + nearby
+        vision_top_100 = leaf_scores.sort_values(
+            "vision_score", ascending=False
+        ).reset_index(drop=True).head(100)
+
+        combined_top_100 = leaf_scores.sort_values(
+            "combined_score", ascending=False
+        ).reset_index(drop=True).head(100)
+
+        combined_nearby_top_100 = leaf_scores.query(
+            "geo_score >= geo_threshold"
+        ).sort_values(
+            "combined_score", ascending=False
+        ).reset_index(drop=True).head(100)
+
+        return {
+            "vision": {
+                "scores": vision_top_100,
+                "common_ancestor": {
+                    "taxon": vision_common_ancestor,
+                    "pool_size": self.common_ancestor_pool_size(vision_aggregated_scores),
+                    "score": self.common_ancestor_score(vision_common_ancestor)
+                }
+            },
+            "combined": {
+                "scores": combined_top_100,
+                "common_ancestor": {
+                    "taxon": combined_common_ancestor,
+                    "pool_size": self.common_ancestor_pool_size(combined_aggregated_scores),
+                    "score": self.common_ancestor_score(combined_common_ancestor)
+                }
+            },
+            "combined_nearby": {
+                "scores": combined_nearby_top_100,
+                "common_ancestor": {
+                    "taxon": combined_common_ancestor,
+                    "pool_size": self.common_ancestor_pool_size(combined_aggregated_scores),
+                    "score": self.common_ancestor_score(combined_common_ancestor)
+                }
+            }
+        }
+
+    def common_ancestor_score(self, common_ancestor):
+        return common_ancestor[
+            "normalized_aggregated_combined_score"
+        ] if common_ancestor is not None else 0
+
+    def common_ancestor_pool_size(self, aggregated_scores):
+        return aggregated_scores.query(
+            "leaf_class_id.notnull()"
+        ).index.size
+
+    def summarize_result_subset(
+        self, inferrer, observation, inferrer_results, summary_index, cutoff=False
+    ):
+        working_results = inferrer_results["scores"]
+        if cutoff:
+            score_column = "vision_score" if summary_index == "vision" else "combined_score"
+            values = working_results.head(1)[score_column].values
+            if len(values) == 0:
+                top_score = 0
+            else:
+                top_score = values[0]
+            working_results = working_results.query(
+                f"{score_column} > {top_score * 0.001}"
+            ).head(10)
+
+        summary = {}
+        common_ancestor = inferrer_results["common_ancestor"]
+        if common_ancestor["taxon"] is None:
+            summary["common_ancestor_id"] = 0
+            summary["common_ancestor_score"] = 0
+            summary["common_ancestor_pool_size"] = 0
+            summary["common_ancestor_ancestors"] = ""
+            summary["common_ancestor_rank_level"] = np.nan
+            summary["common_ancestor_accurate"] = 0
+            summary["common_ancestor_present"] = 0
+        else:
+            is_accurate = common_ancestor["taxon"].taxon_id in observation.taxon_ancestry
+            summary["common_ancestor_id"] = common_ancestor["taxon"].taxon_id
+            summary["common_ancestor_score"] = common_ancestor["score"]
+            summary["common_ancestor_pool_size"] = common_ancestor["pool_size"]
+            summary["common_ancestor_ancestors"] = "/".join(
+                str(a) for a in
+                inferrer.taxonomy.taxon_ancestors[
+                    common_ancestor["taxon"].taxon_id
+                ]
+            )
+            summary["common_ancestor_rank_level"] = common_ancestor["taxon"].rank_level
+            summary["common_ancestor_accurate"] = 1 if is_accurate else 0
+            summary["common_ancestor_present"] = 1
+
+        matching_index = self.matching_index(observation, working_results)
+
+        results_count = len(working_results.index)
+        summary["results_count"] = results_count
+        summary["matching_index"] = matching_index
+        summary["recall"] = 1 if matching_index is not None else 0
+        summary["precision"] = 0 if matching_index is None else 1 / results_count
+
+        sum_of_precision_and_recall = summary["precision"] + summary["recall"]
+        summary["f1"] = 0 if sum_of_precision_and_recall == 0 else (
+            2 * summary["precision"]
+        ) / sum_of_precision_and_recall
+
+        return summary
 
     def matching_index(self, observation, results):
         matching_indices = results.index[
             results["taxon_id"] == observation.taxon_id
         ].tolist()
         return matching_indices[0] if len(matching_indices) > 0 else None
-
-    def summarize_results(self, observation):
-        for inferrer_index, results in observation.inferrer_scores.items():
-            observation.summarized_results[inferrer_index] = {}
-            for results_index, results_scores in results.items():
-                self.summarize_result_subset(observation, inferrer_index, results, results_index)
-                self.summarize_result_subset(
-                    observation, inferrer_index, results, results_index, cutoff=True
-                )
-
-    def summarize_result_subset(self, observation, index, results, subset, cutoff=False):
-        working_results = results[subset]
-        summary_label = subset
-        if cutoff:
-            summary_label += "-cutoff"
-            score_column = "vision_score" if subset == "vision" else "combined_score"
-            values = results[subset].head(1)[score_column].values
-            if len(values) == 0:
-                top_score = 0
-            else:
-                top_score = values[0]
-            working_results = results[subset].query(
-                f"{score_column} > {top_score * 0.001}"
-            ).head(10)
-
-        matching_index = self.matching_index(observation, working_results)
-
-        results_count = len(working_results.index)
-        summary = {
-            "results_count": results_count,
-            "matching_index": matching_index,
-            "recall": 1 if matching_index is not None else 0,
-            "precision": 0 if matching_index is None else 1 / results_count,
-        }
-        sum_of_precision_and_recall = summary["precision"] + summary["recall"]
-        summary["f1"] = 0 if sum_of_precision_and_recall == 0 else (
-            2 * summary["precision"]
-        ) / sum_of_precision_and_recall
-        observation.summarized_results[index][summary_label] = summary
 
     async def download_photo_async(self, photo_url):
         checksum = hashlib.md5(photo_url.encode()).hexdigest()
@@ -367,36 +467,3 @@ class VisionTesting:
                 f"{rate}/sec  \t"
                 f"estimated {remaining_time} sec remaining\t"
             )
-
-    # def assess_top_results(self, observation, top_results):
-    #     match_index = None
-    #     distance_scores = []
-    #     for index, row in top_results.reset_index(drop=True).iterrows():
-    #         if row["taxon_id"] == observation.taxon_id:
-    #             match_index = index
-
-    #         if index < 10:
-    #             if row["taxon_id"] == observation.taxon_id:
-    #                 # the taxa match, so the taxon distance score is 1
-    #                 distance_scores.append(1)
-    #                 break
-
-    #             # if this is a top 10 result but not a match, append to taxon_scores
-    #             # some measure of how far away this taxon is from the expected correct taxon using
-    #             # (1 - [index of match in reversed target ancestry]/[lenth of target ancestry])
-    #             # e.g. if the ancestry is 1/2/3/4/5/6/7/8 and this result has an ancestry of
-    #             # 1/2/3/4/5, the match occcurs at taxon 5, which is in (reverse 0-indexed)
-    #             # position 3 in the target taxon's ancestry, out of 8 taxa in that ancestry.
-    #             # So the taxon score will be (1 - (3/8))^2, or (.625)^2, or 0.3090625
-    #             # NOTE: This is experimental and needs testing
-    #             try:
-    #                 taxon_match_index = observation.taxon_ancestry[::-1].index(row["taxon_id"])
-    #             except ValueError:
-    #                 taxon_match_index = None
-    #             if taxon_match_index:
-    #                 distance_score = (1 - (taxon_match_index / len(observation.taxon_ancestry)))**2
-    #                 distance_scores.append(distance_score)
-    #                 break
-    #             else:
-    #                 distance_scores.append(0)
-    #     return match_index, distance_scores

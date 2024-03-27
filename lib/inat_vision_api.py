@@ -4,12 +4,11 @@ import os
 import urllib
 import uuid
 import json
-import pandas as pd
 
 from flask import Flask, request, render_template
 from web_forms import ImageForm
 from inat_inferrer import InatInferrer
-from lib.model_taxonomy_dataframe import ModelTaxonomyDataframe
+from inat_vision_api_responses import InatVisionAPIResponses
 
 
 class InatVisionAPI:
@@ -109,163 +108,29 @@ class InatVisionAPI:
         else:
             return render_template("home.html")
 
-    def best_leaves_from_aggregated_results(self, aggregated_results, iteration=0):
-        # use a lower threshold on the first pass to have higher representation from
-        # original model leaf taxa
-        selection_score_threshold = 0.05 if iteration == 0 else 0.1
-        remaining_results = aggregated_results.query(
-            f"selection_score > {selection_score_threshold}"
-        )
-        # set a rank level cutoff on higher taxa to include in results
-        if iteration > 0:
-            remaining_results = remaining_results.query(
-                "rank_level < 50"
-            )
-        # after setting a cutoff, get the parent IDs of the remaining taxa
-        parent_taxon_ids = remaining_results["parent_taxon_id"].values  # noqa: F841
-        # the leaves of the pruned taxonomy (not leaves of the original taxonomy), are the
-        # taxa who are not parents of any remaining taxa
-        leaf_results = remaining_results.query("taxon_id not in @parent_taxon_ids")
-
-        # lower the scores of ancestors by the scores of the taxa being moved into the result set
-        for selection_score, aggregated_combined_score, left, right in zip(
-            leaf_results["selection_score"],
-            leaf_results["aggregated_combined_score"],
-            leaf_results["left"],
-            leaf_results["right"]
-        ):
-            self_and_ancestors = remaining_results.query(
-                f"left <= {left} and right >= {right}"
-            )
-            remaining_results.loc[
-                self_and_ancestors.index,
-                "selection_score"
-            ] -= selection_score
-            remaining_results.loc[
-                self_and_ancestors.index,
-                "aggregated_combined_score"
-            ] -= aggregated_combined_score
-
-        # stop picking taxa if one represents more than 80% of aggregated scores
-        if leaf_results["normalized_aggregated_combined_score"].max() >= 0.8:
-            remaining_results = pd.DataFrame()
-        else:
-            remaining_results = remaining_results.query(
-                "selection_score > 0.1"
-            )
-        return [leaf_results, remaining_results]
-
     def score_image(self, form, file_path, lat, lng, iconic_taxon_id, geomodel):
         score_without_geo = (form.score_without_geo.data == "true")
         filter_taxon = self.inferrer.lookup_taxon(iconic_taxon_id)
         leaf_scores = self.inferrer.predictions_for_image(
-            file_path, lat, lng, filter_taxon, score_without_geo
+            file_path, lat, lng, filter_taxon, score_without_geo, debug=True
         )
 
         if form.aggregated.data == "true":
-            aggregated_results = self.inferrer.aggregate_results(leaf_scores, filter_taxon,
-                                                                 score_without_geo)
+            aggregated_scores = self.inferrer.aggregate_results(leaf_scores, debug=True)
             if form.format.data == "tree":
-                aggregated_results = aggregated_results.query(
-                    "normalized_aggregated_combined_score > 0.001"
-                )
-                printable_tree = ModelTaxonomyDataframe.printable_tree(
-                    aggregated_results,
-                    display_taxon_lambda=(
-                        lambda row: f"{row.name}\t\t["
-                                    f"ID:{row.taxon_id}, "
-                                    f"V:{round(row.aggregated_vision_score, 4)}, "
-                                    f"G:{round(row.aggregated_geo_score, 4)}, "
-                                    f"C:{round(row.aggregated_combined_score, 4)}, "
-                                    f"NC:{round(row.normalized_aggregated_combined_score, 4)}]"
-                    )
-                )
-                return "<pre>" + "<br/>".join(printable_tree) + "</pre>"
-
-            aggregated_results = aggregated_results.query(
-                "normalized_aggregated_combined_score > 0.05"
+                return InatVisionAPIResponses.aggregated_tree_response(aggregated_scores)
+            return InatVisionAPIResponses.aggregated_object_response(
+                leaf_scores, aggregated_scores, self.inferrer
             )
 
-            aggregated_results["selection_score"] = aggregated_results[
-                "normalized_aggregated_combined_score"
-            ]
-            iteration = 0
-            leaf_results, remaining_results = self.best_leaves_from_aggregated_results(
-                aggregated_results, iteration
-            )
-            while len(remaining_results.index) > 0:
-                iteration += 1
-                next_leaf_results, remaining_results = self.best_leaves_from_aggregated_results(
-                    remaining_results, iteration
-                )
-                leaf_results = pd.concat([leaf_results, next_leaf_results])
+        # legacy dict response
+        if geomodel != "true":
+            return InatVisionAPIResponses.legacy_dictionary_response(leaf_scores)
 
-            leaf_results = leaf_results.sort_values(
-                "aggregated_combined_score",
-                ascending=False
-            ).head(100)
+        if form.format.data == "object":
+            return InatVisionAPIResponses.object_response(leaf_scores, self.inferrer)
 
-            score_columns = ["aggregated_combined_score", "aggregated_geo_score",
-                             "aggregated_vision_score", "aggregated_geo_threshold"]
-            leaf_results[score_columns] = leaf_results[score_columns].multiply(100, axis="index")
-
-            columns_to_return = [
-                "aggregated_combined_score",
-                "aggregated_geo_score",
-                "taxon_id",
-                "name",
-                "aggregated_vision_score",
-                "aggregated_geo_threshold"
-            ]
-            column_mapping = {
-                "taxon_id": "id",
-                "aggregated_combined_score": "combined_score",
-                "aggregated_geo_score": "geo_score",
-                "aggregated_vision_score": "vision_score",
-                "aggregated_geo_threshold": "geo_threshold"
-            }
-            final_results = leaf_results[columns_to_return].rename(columns=column_mapping)
-        else:
-            top_combined_score = leaf_scores.sort_values(
-                "combined_score",
-                ascending=False
-            ).head(1)["combined_score"].values[0]
-            # set a cutoff so results whose combined scores are
-            # much lower than the best score are not returned
-            leaf_scores = leaf_scores.query(f"combined_score > {top_combined_score * 0.001}")
-
-            top100 = leaf_scores.sort_values("combined_score", ascending=False).head(100)
-            score_columns = [
-                "combined_score",
-                "geo_score",
-                "normalized_vision_score",
-                "geo_threshold"
-            ]
-            top100[score_columns] = top100[score_columns].multiply(100, axis="index")
-
-            # legacy dict response
-            if geomodel != "true":
-                top_taxon_combined_scores = top100[
-                    ["taxon_id", "combined_score"]
-                ].to_dict(orient="records")
-                return {x["taxon_id"]: x["combined_score"] for x in top_taxon_combined_scores}
-
-            # new array response
-            columns_to_return = [
-                "combined_score",
-                "geo_score",
-                "taxon_id",
-                "name",
-                "normalized_vision_score",
-                "geo_threshold"
-            ]
-            column_mapping = {
-                "taxon_id": "id",
-                "normalized_vision_score": "vision_score"
-            }
-            final_results = top100[columns_to_return].rename(columns=column_mapping)
-
-        return final_results.to_dict(orient="records")
+        return InatVisionAPIResponses.array_response(leaf_scores)
 
     def process_upload(self, form_image_data, image_uuid):
         if form_image_data is None:

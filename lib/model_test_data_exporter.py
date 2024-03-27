@@ -145,6 +145,7 @@ class ModelTestDataExporter:
                 metric_counts[metric["metric"]] -= 1
         if ("location" in metric_counts and metric_counts["location"] < 0) \
            or ("evidence" in metric_counts and metric_counts["evidence"] < 0) \
+           or ("subject" in metric_counts and metric_counts["subject"] < 0) \
            or ("date" in metric_counts and metric_counts["date"] < 0) \
            or ("recent" in metric_counts and metric_counts["recent"] < 0):
             self.used_observations[row["uuid"]] = True

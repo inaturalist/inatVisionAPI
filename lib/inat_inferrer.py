@@ -13,55 +13,117 @@ from lib.tf_gp_elev_model import TFGeoPriorModelElev
 from lib.vision_inferrer import VisionInferrer
 from lib.model_taxonomy_dataframe import ModelTaxonomyDataframe
 
-# TODO: better way to address the SettingWithCopyWarning warning?
-pd.options.mode.chained_assignment = None
-
-MINIMUM_GEO_SCORE = 0.005
+pd.options.mode.copy_on_write = True
 
 
 class InatInferrer:
 
+    MINIMUM_GEO_SCORE = 0.005
+    COMMON_ANCESTOR_CUTOFF_RATIO = 0.01
+    COMMON_ANCESTOR_WINDOW = 15
+
     def __init__(self, config):
         self.config = config
-        self.setup_taxonomy(config)
-        self.setup_synonyms(config)
-        self.setup_vision_model(config)
-        self.setup_elevation_dataframe(config)
-        self.setup_geo_model(config)
+        self.setup_taxonomy()
+        self.setup_synonyms()
+        self.setup_synonym_taxonomy()
+        self.setup_vision_model()
+        self.setup_elevation_dataframe()
+        self.setup_geo_model()
         self.upload_folder = "static/"
 
-    def setup_taxonomy(self, config):
+    def setup_taxonomy(self):
         self.taxonomy = ModelTaxonomyDataframe(
-            config["taxonomy_path"],
-            config["tf_elev_thresholds"] if "tf_elev_thresholds" in config else None
+            self.config["taxonomy_path"],
+            self.config["tf_elev_thresholds"] if "tf_elev_thresholds" in self.config else None
         )
 
-    def setup_synonyms(self, config):
+    def setup_synonyms(self):
         self.synonyms = None
-        if "synonyms_path" in config:
-            if not os.path.exists(config["synonyms_path"]):
-                return None
-            self.synonyms = pd.read_csv(config["synonyms_path"])
+        if "synonyms_path" not in self.config:
+            return
 
-    def setup_vision_model(self, config):
-        self.vision_inferrer = VisionInferrer(config["vision_model_path"])
+        if not os.path.exists(self.config["synonyms_path"]):
+            return
 
-    def setup_elevation_dataframe(self, config):
+        self.synonyms = pd.read_csv(
+            self.config["synonyms_path"],
+            dtype={
+                "model_taxon_id": int,
+                "parent_taxon_id": "Int64",
+                "taxon_id": "Int64",
+                "rank_level": float,
+                "name": pd.StringDtype()
+            }
+        )
+
+    def setup_synonym_taxonomy(self):
+        if self.synonyms is None:
+            return
+
+        if "synonyms_taxonomy_path" not in self.config:
+            return
+
+        synonym_taxonomy = ModelTaxonomyDataframe(
+            self.config["synonyms_taxonomy_path"],
+            self.config["tf_elev_thresholds"] if "tf_elev_thresholds" in self.config else None
+        )
+        # ensure the leaf_class_ids from the synonym taxonomy are identical
+        # to the taxonomy generated at data export time
+        if not self.taxonomy.leaf_df.index.equals(synonym_taxonomy.leaf_df.index):
+            error = "Synonym taxonomy does not match the model taxonomy"
+            print(error)
+            raise RuntimeError(error)
+
+        synonym_taxon_ids = np.unique(pd.array(self.synonyms["taxon_id"].dropna().values))
+        synonym_taxonomy_taxon_ids = np.unique(
+            pd.array(synonym_taxonomy.df[
+                synonym_taxonomy.df.taxon_id.isin(synonym_taxon_ids)
+            ]["taxon_id"].values)
+        )
+        synonym_taxon_ids_not_present_in_taxonomy = np.setdiff1d(
+            synonym_taxon_ids, synonym_taxonomy_taxon_ids
+        )
+        # ensure all taxa referenced in the synonym mappings file are present in the
+        # updated taxonomy that should include all original taxa plus all synonyms
+        if synonym_taxon_ids_not_present_in_taxonomy.size > 0:
+            error = "There are taxa in the synonyms file not present in the synonyms " + \
+                f"taxonomy:  {synonym_taxon_ids_not_present_in_taxonomy}"
+            print(error)
+            raise RuntimeError(error)
+
+        synonym_taxonomy.leaf_df["has_synonyms"] = False
+        # mark taxa that should be replaced or removed as having synonyms
+        for index, taxon in self.taxonomy.leaf_df[self.taxonomy.leaf_df["taxon_id"].isin(
+            self.synonyms["model_taxon_id"]
+        )].iterrows():
+            synonym_taxonomy.leaf_df.loc[taxon["leaf_class_id"], "has_synonyms"] = True
+
+        # replace the originally exported taxonomy with the updated taxonomy that includes synonyms
+        self.taxonomy = synonym_taxonomy
+
+    def setup_vision_model(self):
+        self.vision_inferrer = VisionInferrer(self.config["vision_model_path"])
+
+    def setup_elevation_dataframe(self):
         self.geo_elevation_cells = None
-        # load elevation data stored at H3 resolution 4
-        if "elevation_h3_r4" in config:
-            self.geo_elevation_cells = pd.read_csv(config["elevation_h3_r4"]). \
-                sort_values("h3_04").set_index("h3_04").sort_index()
-            self.geo_elevation_cells = InatInferrer.add_lat_lng_to_h3_geo_dataframe(
-                self.geo_elevation_cells
-            )
+        if "elevation_h3_r4" not in self.config:
+            return
 
-    def setup_elevation_dataframe_from_worldclim(self, config, resolution):
+        # load elevation data stored at H3 resolution 4
+        self.geo_elevation_cells = pd.read_csv(self.config["elevation_h3_r4"]). \
+            sort_values("h3_04").set_index("h3_04").sort_index()
+        self.geo_elevation_cells = InatInferrer.add_lat_lng_to_h3_geo_dataframe(
+            self.geo_elevation_cells
+        )
+
+    def setup_elevation_dataframe_from_worldclim(self, resolution):
         # preventing from processing at too high a resolution
         if resolution > 5:
             return
-        if "wc2.1_5m_elev_2.tif" in config:
-            im = tifffile.imread(config["wc2.1_5m_elev_2.tif"])
+
+        if "wc2.1_5m_elev_2.tif" in self.config:
+            im = tifffile.imread(self.config["wc2.1_5m_elev_2.tif"])
             im_df = pd.DataFrame(im)
             im_df.index = np.linspace(90, -90, 2160)
             im_df.columns = np.linspace(-180, 180, 4320)
@@ -71,16 +133,21 @@ class InatInferrer:
             elev_dfh3 = im_df.h3.geo_to_h3(resolution)
             elev_dfh3 = elev_dfh3.drop(columns=["lng", "lat"]).groupby(f"h3_0{resolution}").mean()
 
-    def setup_geo_model(self, config):
+    def setup_geo_model(self):
         self.geo_elevation_model = None
         self.geo_model_features = None
-        if "tf_geo_elevation_model_path" in config and self.geo_elevation_cells is not None:
-            self.geo_elevation_model = TFGeoPriorModelElev(config["tf_geo_elevation_model_path"])
-            self.geo_model_features = self.geo_elevation_model.features_for_one_class_elevation(
-                latitude=list(self.geo_elevation_cells.lat),
-                longitude=list(self.geo_elevation_cells.lng),
-                elevation=list(self.geo_elevation_cells.elevation)
-            )
+        if "tf_geo_elevation_model_path" not in self.config:
+            return
+
+        if self.geo_elevation_cells is None:
+            return
+
+        self.geo_elevation_model = TFGeoPriorModelElev(self.config["tf_geo_elevation_model_path"])
+        self.geo_model_features = self.geo_elevation_model.features_for_one_class_elevation(
+            latitude=list(self.geo_elevation_cells.lat),
+            longitude=list(self.geo_elevation_cells.lng),
+            elevation=list(self.geo_elevation_cells.elevation)
+        )
 
     def vision_predict(self, image, debug=False):
         if debug:
@@ -95,8 +162,10 @@ class InatInferrer:
             start_time = time.time()
         if lat is None or lat == "" or lng is None or lng == "":
             return None
+
         if self.geo_elevation_model is None:
             return None
+
         # lookup the H3 cell this lat lng occurs in
         h3_cell = h3.geo_to_h3(float(lat), float(lng), 4)
         h3_cell_centroid = h3.h3_to_geo(h3_cell)
@@ -111,6 +180,7 @@ class InatInferrer:
     def lookup_taxon(self, taxon_id):
         if taxon_id is None:
             return None
+
         try:
             return self.taxonomy.df.loc[taxon_id]
         except Exception as e:
@@ -124,11 +194,13 @@ class InatInferrer:
         image = InatInferrer.prepare_image_for_inference(file_path)
         raw_vision_scores = self.vision_predict(image, debug)
         raw_geo_scores = self.geo_model_predict(lat, lng, debug)
-        top100 = self.combine_results(raw_vision_scores, raw_geo_scores, filter_taxon,
-                                      score_without_geo, debug)
+        combined_scores = self.combine_results(
+            raw_vision_scores, raw_geo_scores, filter_taxon, score_without_geo, debug
+        )
+        combined_scores = self.map_result_synonyms(combined_scores, debug)
         if debug:
             print("Prediction Time: %0.2fms" % ((time.time() - start_time) * 1000.))
-        return top100
+        return combined_scores
 
     def combine_results(self, raw_vision_scores, raw_geo_scores, filter_taxon,
                         score_without_geo=False, debug=False):
@@ -146,7 +218,7 @@ class InatInferrer:
         leaf_scores["geo_score"] = 0 if no_geo_scores else raw_geo_scores
         # set a lower limit for geo scores if there are any
         leaf_scores["normalized_geo_score"] = 0 if no_geo_scores \
-            else leaf_scores["geo_score"].clip(MINIMUM_GEO_SCORE, None)
+            else leaf_scores["geo_score"].clip(InatInferrer.MINIMUM_GEO_SCORE, None)
 
         # if filtering by a taxon, restrict results to that taxon and its descendants
         if filter_taxon is not None:
@@ -173,46 +245,96 @@ class InatInferrer:
                 leaf_scores["normalized_geo_score"]
         if debug:
             print("Score Combining Time: %0.2fms" % ((time.time() - start_time) * 1000.))
+        leaf_scores.reset_index(drop=True, inplace=True)
         return leaf_scores
 
-    def aggregate_results(self, leaf_scores, filter_taxon, score_without_geo=False, debug=False):
+    def map_result_synonyms(self, leaf_scores, debug=False):
+        if self.synonyms is None or "has_synonyms" not in leaf_scores.columns:
+            return leaf_scores
+
+        if debug:
+            start_time = time.time()
+        # create an empty dataframe to hold synonym replacements
+        synonyms_dataframe = pd.DataFrame(
+            columns=leaf_scores.columns
+        ).set_index("taxon_id", drop=False)
+        # loop through the taxa in leaf_scores that have synonym mappings
+        for taxon in leaf_scores[
+            leaf_scores.taxon_id.isin(self.synonyms["model_taxon_id"])
+        ].to_dict("records"):
+            for synonym in self.synonyms[
+                self.synonyms["model_taxon_id"] == taxon["taxon_id"]
+            ].to_dict("records"):
+                # the taxon has been remove, so there is no replacement
+                if pd.isna(synonym["taxon_id"]):
+                    continue
+
+                # the replace some attributes of the leaf_scores taxon, while keeping
+                # all other columns, like the scores, untouched
+                replacement = taxon.copy()
+                replacement["parent_taxon_id"] = synonym["parent_taxon_id"]
+                replacement["taxon_id"] = synonym["taxon_id"]
+                replacement["rank_level"] = synonym["rank_level"]
+                replacement["name"] = synonym["name"]
+                replacement["left"] = np.nan
+                replacement["right"] = np.nan
+                # add the replacement taxon to the synonyms dataframe
+                synonyms_dataframe.loc[replacement["taxon_id"]] = replacement
+        # remove all taxa from leaf scores that had synonym mappings
+        leaf_scores = leaf_scores.query("has_synonyms == False")
+        if not synonyms_dataframe.empty:
+            # inject the synonym replacements into leaf_scores
+            leaf_scores = pd.concat([
+                leaf_scores.query("has_synonyms == False"), synonyms_dataframe
+            ], axis=0)
+        if debug:
+            print("Synonym Mapping Time: %0.2fms" % ((time.time() - start_time) * 1000.))
+        return leaf_scores
+
+    def aggregate_results(self, leaf_scores, debug=False,
+                          score_ratio_cutoff=0.001,
+                          max_leaf_scores_to_consider=None,
+                          column_for_cutoff="combined_score"):
         if debug:
             start_time = time.time()
 
-        no_geo_scores = (leaf_scores["geo_score"].max() == 0)
-        # make a copy of the full taxonomy including non-leaves to be used for storing results
-        if filter_taxon is not None:
-            # using nested set left and right values, select the filter taxon,
-            # its descendants, and its ancestors
-            all_node_scores = self.taxonomy.df.query(
-                f"(left >= {filter_taxon['left']} and right <= {filter_taxon['right']}) or"
-                f"(left < {filter_taxon['left']} and right > {filter_taxon['right']})"
-            ).copy().reset_index(drop=True)
-        else:
-            all_node_scores = self.taxonomy.df.copy().reset_index(drop=True)
+        # start with a copy of the whole taxonomy
+        all_node_scores = self.taxonomy.df.copy().reset_index(drop=True)
 
-        # copy the score columns from the already-calculated leaf scores
+        # copy columns from the already calculated leaf scores including scores
+        # and class_id columns which will not be populated for synonyms in the taxonomy
         all_node_scores = pd.merge(all_node_scores, leaf_scores[[
-            "taxon_id", "vision_score", "normalized_vision_score", "geo_score",
-            "normalized_geo_score"]], on="taxon_id", how="left").set_index("taxon_id", drop=False)
+            "taxon_id", "vision_score", "normalized_vision_score", "geo_score", "combined_score",
+            "normalized_geo_score", "leaf_class_id", "iconic_class_id", "spatial_class_id"]],
+            on="taxon_id",
+            how="left",
+            suffixes=["_x", None]
+        ).set_index("taxon_id", drop=False)
 
-        # calculate the highest combined score
+        # calculate the highest combined score from leaf_scores
         top_combined_score = leaf_scores.sort_values(
-            "combined_score", ascending=False).head(1)["combined_score"].values[0]
-        lower_cutoff_threshold = 0.0001
-        # determine a lower-bound cutoff where results with combined scores below this cutoff
-        # will be ignored. This isn't necessary for scoring, but it improves performance
-        # TODO: evaluate this
-        cutoff = max([0.00001, top_combined_score * lower_cutoff_threshold])
+            column_for_cutoff, ascending=False
+        ).head(1)[column_for_cutoff].values[0]
+        # define some cutoff based on a percentage of the top combined score. Taxa with
+        # scores below the cutoff will be ignored when aggregating scores up the taxonomy
+        cutoff = top_combined_score * score_ratio_cutoff
 
-        aggregated_scores = {}
         # restrict score aggregation to results where the combined score is above the cutoff
-        scores_to_aggregate = leaf_scores.query(f"combined_score > {cutoff}")
+        scores_to_aggregate = leaf_scores.query(
+            f"{column_for_cutoff} > {cutoff}"
+        )
+        if max_leaf_scores_to_consider is not None:
+            scores_to_aggregate = scores_to_aggregate.sort_values(
+                column_for_cutoff, ascending=False
+            ).head(max_leaf_scores_to_consider)
+
         # loop through all results where the combined score is above the cutoff
-        for taxon_id, vision_score, geo_score, geo_threshold in zip(
+        aggregated_scores = {}
+        for taxon_id, vision_score, geo_score, combined_score, geo_threshold in zip(
             scores_to_aggregate["taxon_id"],
             scores_to_aggregate["normalized_vision_score"],
-            scores_to_aggregate["normalized_geo_score"],
+            scores_to_aggregate["geo_score"],
+            scores_to_aggregate["combined_score"],
             scores_to_aggregate["geo_threshold"]
         ):
             # loop through the pre-calculated ancestors of this result's taxon
@@ -221,50 +343,39 @@ class InatInferrer:
                 if ancestor_taxon_id not in aggregated_scores:
                     aggregated_scores[ancestor_taxon_id] = {}
                     aggregated_scores[ancestor_taxon_id]["aggregated_vision_score"] = 0
-                    if not no_geo_scores:
-                        aggregated_scores[ancestor_taxon_id]["aggregated_geo_score"] = 0
-                        aggregated_scores[ancestor_taxon_id]["aggregated_geo_threshold"] = 100
-                # aggregated vision score is a sum of descendant scores
+                    aggregated_scores[ancestor_taxon_id]["aggregated_combined_score"] = 0
+                    aggregated_scores[ancestor_taxon_id]["aggregated_geo_score"] = 0
+                    aggregated_scores[ancestor_taxon_id][
+                        "aggregated_geo_threshold"
+                    ] = geo_threshold if (ancestor_taxon_id == taxon_id) else 1.0
+                # aggregated vision and combined scores are sums of descendant scores
                 aggregated_scores[ancestor_taxon_id]["aggregated_vision_score"] += vision_score
-                if not no_geo_scores and \
-                   geo_score > aggregated_scores[ancestor_taxon_id]["aggregated_geo_score"]:
-                    # aggregated geo score is the max of descendant geo scores
+                aggregated_scores[ancestor_taxon_id]["aggregated_combined_score"] += combined_score
+
+                # aggregated geo score is the max of descendant geo scores
+                if geo_score > aggregated_scores[ancestor_taxon_id]["aggregated_geo_score"]:
                     aggregated_scores[ancestor_taxon_id]["aggregated_geo_score"] = geo_score
-                if not no_geo_scores and \
-                    aggregated_scores[ancestor_taxon_id]["aggregated_geo_threshold"] != 0 and \
-                        geo_score > geo_threshold:
-                    # aggregated threshold is set to 0 if any descendants are above their threshold
-                    aggregated_scores[ancestor_taxon_id]["aggregated_geo_threshold"] = 0
+
+                # aggregated geo threshold is the min of descendant geo thresholds
+                if ancestor_taxon_id != taxon_id and geo_threshold < aggregated_scores[
+                    ancestor_taxon_id
+                ]["aggregated_geo_threshold"]:
+                    aggregated_scores[ancestor_taxon_id][
+                        "aggregated_geo_threshold"
+                    ] = geo_threshold
 
         # turn the aggregated_scores dict into a data frame
         scores_df = pd.DataFrame.from_dict(aggregated_scores, orient="index")
         # merge the aggregated scores into the scoring taxonomy
-        all_node_scores = all_node_scores.join(scores_df)
+        all_node_scores = all_node_scores.join(scores_df).query(
+            "aggregated_combined_score.notnull()"
+        )
 
-        # the aggregated scores of leaves will be NaN, so populate them with their original scores
-        all_node_scores["aggregated_vision_score"].fillna(
-            all_node_scores["normalized_vision_score"], inplace=True)
-        if no_geo_scores:
-            all_node_scores["aggregated_geo_score"] = 0
-            all_node_scores["aggregated_geo_threshold"] = 0
-        else:
-            all_node_scores["aggregated_geo_score"].fillna(
-                all_node_scores["normalized_geo_score"], inplace=True)
-            all_node_scores["aggregated_geo_threshold"].fillna(
-                all_node_scores["geo_threshold"], inplace=True)
-
-        if (no_geo_scores or score_without_geo):
-            # if there are no geo scores, or it was requested to not use geo scores to affect
-            # the final combined score, set the combined scores to be the same as the vision scores
-            all_node_scores["aggregated_combined_score"] = \
-                all_node_scores["aggregated_vision_score"]
-        else:
-            # the combined score is simply the normalized vision score
-            # multipliedby the normalized geo score
-            all_node_scores["aggregated_combined_score"] = \
-                all_node_scores["aggregated_vision_score"] * all_node_scores["aggregated_geo_score"]
-
-        # calculate a normalized combined score so all values add to 1, to be used for thresholding
+        # calculate normalized scores so all values add to 1, to be used for thresholding
+        sum_of_root_node_aggregated_vision_scores = all_node_scores.query(
+            "parent_taxon_id.isnull()")["aggregated_vision_score"].sum()
+        all_node_scores["normalized_aggregated_vision_score"] = all_node_scores[
+            "aggregated_vision_score"] / sum_of_root_node_aggregated_vision_scores
         sum_of_root_node_aggregated_combined_scores = all_node_scores.query(
             "parent_taxon_id.isnull()")["aggregated_combined_score"].sum()
         all_node_scores["normalized_aggregated_combined_score"] = all_node_scores[
@@ -272,19 +383,7 @@ class InatInferrer:
 
         if debug:
             print("Aggregation Time: %0.2fms" % ((time.time() - start_time) * 1000.))
-            thresholded_results = all_node_scores.query(
-                "normalized_aggregated_combined_score > 0.05"
-            )
-            print("\nTree of aggregated results:")
-            ModelTaxonomyDataframe.print(thresholded_results, display_taxon_lambda=(
-                lambda row: f"{row.name}    ["
-                            f"ID:{row.taxon_id}, "
-                            f"V:{round(row.aggregated_vision_score, 4)}, "
-                            f"G:{round(row.aggregated_geo_score, 4)}, "
-                            f"C:{round(row.aggregated_combined_score, 4)}, "
-                            f"NC:{round(row.normalized_aggregated_combined_score, 4)}]"
-            ))
-            print("")
+            # InatInferrer.print_aggregated_scores(all_node_scores)
         return all_node_scores
 
     def h3_04_geo_results_for_taxon(self, taxon_id, bounds=[],
@@ -365,6 +464,37 @@ class InatInferrer:
             "nelng": geomodel_results["lng"].max()
         }
 
+    def common_ancestor_from_leaf_scores(
+        self, leaf_scores, debug=False, score_to_use="combined_score"
+    ):
+        aggregated_scores = self.aggregate_results(
+            leaf_scores,
+            debug=debug,
+            score_ratio_cutoff=InatInferrer.COMMON_ANCESTOR_CUTOFF_RATIO,
+            max_leaf_scores_to_consider=InatInferrer.COMMON_ANCESTOR_WINDOW,
+            column_for_cutoff=score_to_use
+        )
+        return self.common_ancestor_from_aggregated_scores(
+            aggregated_scores,
+            debug=debug,
+            score_to_use=score_to_use
+        )
+
+    def common_ancestor_from_aggregated_scores(
+        self, aggregated_scores, debug=False, score_to_use="combined_score"
+    ):
+        aggregated_score_to_use = "normalized_aggregated_vision_score" if \
+            score_to_use == "vision_score" else "normalized_aggregated_combined_score"
+        common_ancestor_candidates = aggregated_scores.query(
+            f"{aggregated_score_to_use} > 0.78 and rank_level >= 20 and rank_level <= 33"
+        ).sort_values(
+            by=["rank_level"]
+        )
+        if common_ancestor_candidates.empty:
+            return None
+
+        return common_ancestor_candidates.iloc[0]
+
     @staticmethod
     def prepare_image_for_inference(file_path):
         mime_type = magic.from_file(file_path, mime=True)
@@ -376,8 +506,9 @@ class InatInferrer:
             image = tf.io.read_file(file_path)
             image = tf.image.decode_jpeg(image, channels=3)
         image = tf.image.convert_image_dtype(image, tf.float32)
-        image = tf.image.central_crop(image, 0.875)
-        image = tf.image.resize(image, [299, 299], tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+        image = tf.image.resize_with_crop_or_pad(
+            image, 299, 299
+        )
         return tf.expand_dims(image, 0)
 
     @staticmethod
@@ -410,3 +541,21 @@ class InatInferrer:
             f" ((lng >= {bounds[1] - buffer} and lng <= {bounds[3] + buffer})" + \
             f" {antimedirian_condition})"
         return geo_df.query(query)
+
+    @staticmethod
+    def print_aggregated_scores(aggregated_scores):
+        thresholded_results = aggregated_scores.query(
+            "normalized_aggregated_combined_score > 0.005"
+        )
+        print("\nTree of aggregated results:")
+        ModelTaxonomyDataframe.print(thresholded_results, display_taxon_lambda=(
+            lambda row: f"{row.name}    ["
+                        f"ID:{row.taxon_id}, "
+                        f"V:{round(row.aggregated_vision_score, 4)}, "
+                        f"NV:{round(row.normalized_aggregated_vision_score, 4)}, "
+                        f"G:{round(row.aggregated_geo_score, 4)}, "
+                        f"GT:{round(row.aggregated_geo_threshold, 4)}, "
+                        f"C:{round(row.aggregated_combined_score, 4)}, "
+                        f"NC:{round(row.normalized_aggregated_combined_score, 4)}]"
+        ))
+        print("")

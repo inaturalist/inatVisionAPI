@@ -18,5 +18,5 @@ class TestObservation:
         row["taxon_ancestry"].pop(0)
         for key in row:
             setattr(self, key, row[key])
-        self.inferrer_scores = None
+        self.inferrer_results = None
         self.summarized_results = {}

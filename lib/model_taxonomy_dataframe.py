@@ -53,14 +53,17 @@ class ModelTaxonomyDataframe:
 
     # calculate nested set left and right values. These can be later used for an efficient
     # way to calculate if a taxon is an ancestor or descendant of another
-    def assign_nested_values(self, taxon_id=0, index=0, ancestor_taxon_ids=[]):
+    def assign_nested_values(self, taxon_id=0, index=0, depth=0, ancestor_taxon_ids=[]):
         for child_id in self.taxon_children[taxon_id]:
             self.df.at[self.taxon_row_mapping[child_id], "left"] = index
+            self.df.at[self.taxon_row_mapping[child_id], "depth"] = depth
             child_ancestor_taxon_ids = ancestor_taxon_ids + [child_id]
             self.taxon_ancestors[child_id] = child_ancestor_taxon_ids
             index += 1
             if child_id in self.taxon_children:
-                index = self.assign_nested_values(child_id, index, child_ancestor_taxon_ids)
+                index = self.assign_nested_values(
+                    child_id, index, depth + 1, child_ancestor_taxon_ids
+                )
             self.df.at[self.taxon_row_mapping[child_id], "right"] = index
             index += 1
         return index
