@@ -30,7 +30,6 @@ class TestInatInferrer:
             lat=42,
             lng=-71,
             filter_taxon=None,
-            score_without_geo=False,
             debug=True
         )
         assert isinstance(scores, pd.DataFrame)
@@ -69,7 +68,6 @@ class TestInatInferrer:
             lat=42,
             lng=-71,
             filter_taxon=None,
-            score_without_geo=False,
             debug=True
         )
         scores.normalized_vision_score = 0.5

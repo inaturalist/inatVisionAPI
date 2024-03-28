@@ -19,3 +19,8 @@ parent_taxon_id,taxon_id,rank_level,leaf_class_id,iconic_class_id,spatial_class_
 71289,47131,30,,,18,Grossulariaceae
 47131,47130,20,,,19,Ribes
 47130,47129,10,3,2,20,Ribes californicum
+355675,40151,50,,,21,Mammalia
+40151,43367,40,,,22,Primates
+43367,43575,30,,,23,Hominidae
+43575,43583,20,,,24,Homo
+43583,43584,10,,,25,Homo sapiens

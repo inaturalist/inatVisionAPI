@@ -35,18 +35,21 @@ class TestModelTaxonomyDataframe:
         assert len(children.index) == 1
         assert children.iloc[0]["name"] == "Chordata"
 
+    def test_human_taxon(self, capsys, taxonomy):
+        assert taxonomy.human_taxon["name"] == "Homo sapiens"
+
     def test_print(self, capsys, taxonomy):
         ModelTaxonomyDataframe.print(taxonomy.df)
         captured = capsys.readouterr()
-        assert "├──Animalia :: 0:23" in captured.out
-        assert "│   └──Chordata :: 1:22" in captured.out
+        assert "├──Animalia :: 0:33" in captured.out
+        assert "│   └──Chordata :: 1:32" in captured.out
 
     def test_print_with_aggregated_combined_score(self, capsys, taxonomy):
         taxonomy.df["aggregated_combined_score"] = 1
         ModelTaxonomyDataframe.print(taxonomy.df)
         captured = capsys.readouterr()
-        assert "├──Animalia :: 0:23" in captured.out
-        assert "│   └──Chordata :: 1:22" in captured.out
+        assert "├──Animalia :: 0:33" in captured.out
+        assert "│   └──Chordata :: 1:32" in captured.out
 
     def test_print_with_lambda(self, capsys, taxonomy):
         ModelTaxonomyDataframe.print(taxonomy.df, display_taxon_lambda=(

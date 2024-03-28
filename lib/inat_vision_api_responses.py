@@ -5,7 +5,7 @@ from lib.model_taxonomy_dataframe import ModelTaxonomyDataframe
 
 class InatVisionAPIResponses:
     @staticmethod
-    def legacy_dictionary_response(leaf_scores):
+    def legacy_dictionary_response(leaf_scores, inferrer):
         leaf_scores = InatVisionAPIResponses.limit_leaf_scores_for_response(leaf_scores)
         leaf_scores = InatVisionAPIResponses.update_leaf_scores_scaling(leaf_scores)
         top_taxon_combined_scores = leaf_scores[
@@ -14,7 +14,7 @@ class InatVisionAPIResponses:
         return {x["taxon_id"]: x["combined_score"] for x in top_taxon_combined_scores}
 
     @staticmethod
-    def array_response(leaf_scores):
+    def array_response(leaf_scores, inferrer):
         leaf_scores = InatVisionAPIResponses.limit_leaf_scores_for_response(leaf_scores)
         leaf_scores = InatVisionAPIResponses.update_leaf_scores_scaling(leaf_scores)
         return InatVisionAPIResponses.array_response_columns(leaf_scores).to_dict(orient="records")
@@ -42,7 +42,7 @@ class InatVisionAPIResponses:
         }
 
     @staticmethod
-    def aggregated_tree_response(aggregated_scores):
+    def aggregated_tree_response(aggregated_scores, inferrer):
         top_leaf_combined_score = aggregated_scores.query(
             "leaf_class_id.notnull()"
         ).sort_values(
@@ -85,8 +85,8 @@ class InatVisionAPIResponses:
             "normalized_aggregated_combined_score",
             ascending=False
         ).head(100)
+        top_100_leaves = inferrer.limit_leaf_scores_that_include_humans(top_100_leaves)
 
-        common_ancestor = inferrer.common_ancestor_from_leaf_scores(leaf_scores, debug=True)
         aggregated_scores = InatVisionAPIResponses.update_aggregated_scores_scaling(
             aggregated_scores
         )
@@ -102,6 +102,8 @@ class InatVisionAPIResponses:
             top_100_and_ancestors
         )
 
+        common_ancestor = inferrer.common_ancestor_from_leaf_scores(
+            leaf_scores, debug=True, disallow_humans=True)
         if common_ancestor is not None:
             common_ancestor_frame = pd.DataFrame([common_ancestor])
             common_ancestor_frame = InatVisionAPIResponses.update_aggregated_scores_scaling(

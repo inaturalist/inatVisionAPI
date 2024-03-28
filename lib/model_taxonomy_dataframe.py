@@ -5,19 +5,11 @@ class ModelTaxonomyDataframe:
 
     def __init__(self, path, thresholds_path):
         self.load_mapping(path, thresholds_path)
+        self.set_human_taxon()
 
     def load_mapping(self, path, thresholds_path):
         self.df = pd.read_csv(
             path,
-            usecols=[
-                "parent_taxon_id",
-                "taxon_id",
-                "rank_level",
-                "leaf_class_id",
-                "iconic_class_id",
-                "spatial_class_id",
-                "name"
-            ],
             dtype={
                 "parent_taxon_id": "Int64",
                 "taxon_id": int,
@@ -67,6 +59,14 @@ class ModelTaxonomyDataframe:
             self.df.at[self.taxon_row_mapping[child_id], "right"] = index
             index += 1
         return index
+
+    def set_human_taxon(self):
+        self.human_taxon = None
+        human_rows = self.df.query("name == 'Homo sapiens'")
+        if human_rows.empty:
+            return
+
+        self.human_taxon = human_rows.iloc[0]
 
     @staticmethod
     def children(df, taxon_id):

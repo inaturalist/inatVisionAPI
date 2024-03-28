@@ -109,28 +109,29 @@ class InatVisionAPI:
             return render_template("home.html")
 
     def score_image(self, form, file_path, lat, lng, iconic_taxon_id, geomodel):
-        score_without_geo = (form.score_without_geo.data == "true")
         filter_taxon = self.inferrer.lookup_taxon(iconic_taxon_id)
         leaf_scores = self.inferrer.predictions_for_image(
-            file_path, lat, lng, filter_taxon, score_without_geo, debug=True
+            file_path, lat, lng, filter_taxon, debug=True
         )
 
         if form.aggregated.data == "true":
             aggregated_scores = self.inferrer.aggregate_results(leaf_scores, debug=True)
             if form.format.data == "tree":
-                return InatVisionAPIResponses.aggregated_tree_response(aggregated_scores)
+                return InatVisionAPIResponses.aggregated_tree_response(
+                    aggregated_scores, self.inferrer
+                )
             return InatVisionAPIResponses.aggregated_object_response(
                 leaf_scores, aggregated_scores, self.inferrer
             )
 
         # legacy dict response
         if geomodel != "true":
-            return InatVisionAPIResponses.legacy_dictionary_response(leaf_scores)
+            return InatVisionAPIResponses.legacy_dictionary_response(leaf_scores, self.inferrer)
 
         if form.format.data == "object":
             return InatVisionAPIResponses.object_response(leaf_scores, self.inferrer)
 
-        return InatVisionAPIResponses.array_response(leaf_scores)
+        return InatVisionAPIResponses.array_response(leaf_scores, self.inferrer)
 
     def process_upload(self, form_image_data, image_uuid):
         if form_image_data is None:

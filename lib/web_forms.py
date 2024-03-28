@@ -13,5 +13,4 @@ class ImageForm(FlaskForm):
     taxon_id = StringField("taxon_id")
     geomodel = StringField("geomodel")
     aggregated = StringField("aggregated")
-    score_without_geo = StringField("score_without_geo")
     format = StringField("format")

@@ -187,23 +187,21 @@ class InatInferrer:
             print(f"taxon `{taxon_id}` does not exist in the taxonomy")
             raise e
 
-    def predictions_for_image(self, file_path, lat, lng, filter_taxon, score_without_geo=False,
-                              debug=False):
+    def predictions_for_image(self, file_path, lat, lng, filter_taxon, debug=False):
         if debug:
             start_time = time.time()
         image = InatInferrer.prepare_image_for_inference(file_path)
         raw_vision_scores = self.vision_predict(image, debug)
         raw_geo_scores = self.geo_model_predict(lat, lng, debug)
         combined_scores = self.combine_results(
-            raw_vision_scores, raw_geo_scores, filter_taxon, score_without_geo, debug
+            raw_vision_scores, raw_geo_scores, filter_taxon, debug
         )
         combined_scores = self.map_result_synonyms(combined_scores, debug)
         if debug:
             print("Prediction Time: %0.2fms" % ((time.time() - start_time) * 1000.))
         return combined_scores
 
-    def combine_results(self, raw_vision_scores, raw_geo_scores, filter_taxon,
-                        score_without_geo=False, debug=False):
+    def combine_results(self, raw_vision_scores, raw_geo_scores, filter_taxon, debug=False):
         if debug:
             start_time = time.time()
         no_geo_scores = (raw_geo_scores is None)
@@ -234,7 +232,7 @@ class InatInferrer:
             # when not filtering by a taxon, the normalized vision score is the same as the original
             leaf_scores["normalized_vision_score"] = leaf_scores["vision_score"]
 
-        if no_geo_scores or score_without_geo:
+        if no_geo_scores:
             # if there are no geo scores, or it was requested to not use geo scores to affect
             # the final combined score, set the combined scores to be the same as the vision scores
             leaf_scores["combined_score"] = leaf_scores["normalized_vision_score"]
@@ -465,7 +463,7 @@ class InatInferrer:
         }
 
     def common_ancestor_from_leaf_scores(
-        self, leaf_scores, debug=False, score_to_use="combined_score"
+        self, leaf_scores, debug=False, score_to_use="combined_score", disallow_humans=False
     ):
         aggregated_scores = self.aggregate_results(
             leaf_scores,
@@ -477,11 +475,12 @@ class InatInferrer:
         return self.common_ancestor_from_aggregated_scores(
             aggregated_scores,
             debug=debug,
-            score_to_use=score_to_use
+            score_to_use=score_to_use,
+            disallow_humans=disallow_humans
         )
 
     def common_ancestor_from_aggregated_scores(
-        self, aggregated_scores, debug=False, score_to_use="combined_score"
+        self, aggregated_scores, debug=False, score_to_use="combined_score", disallow_humans=False
     ):
         aggregated_score_to_use = "normalized_aggregated_vision_score" if \
             score_to_use == "vision_score" else "normalized_aggregated_combined_score"
@@ -493,7 +492,37 @@ class InatInferrer:
         if common_ancestor_candidates.empty:
             return None
 
-        return common_ancestor_candidates.iloc[0]
+        common_ancestor = common_ancestor_candidates.iloc[0]
+        if disallow_humans and self.taxonomy.human_taxon is not None and \
+                common_ancestor["taxon_id"] == self.taxonomy.human_taxon["parent_taxon_id"]:
+            return None
+
+        return common_ancestor
+
+    def limit_leaf_scores_that_include_humans(self, leaf_scores):
+        if self.taxonomy.human_taxon is None:
+            return leaf_scores
+
+        top_results = leaf_scores.sort_values(
+            "combined_score",
+            ascending=False
+        ).reset_index(drop=True)
+        human_results = top_results.query(f"taxon_id == {self.taxonomy.human_taxon['taxon_id']}")
+        # there is only 1 result, or humans aren't in the top results
+        if human_results.empty or top_results.index.size == 1:
+            return leaf_scores
+
+        # at this point there are multiple results, and humans is one of them
+        human_result_index = human_results.index[0]
+        # if humans is first and has a substantially higher score than the next, return only humans
+        if human_result_index == 0:
+            human_score_margin = top_results.iloc[0]["combined_score"] / \
+                top_results.iloc[1]["combined_score"]
+            if human_score_margin > 1.5:
+                return top_results.head(1)
+
+        # otherwise return no results
+        return leaf_scores.head(0)
 
     @staticmethod
     def prepare_image_for_inference(file_path):

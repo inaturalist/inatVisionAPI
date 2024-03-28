@@ -221,7 +221,9 @@ class VisionTesting:
             agg_stats, how="left", left_on="run_label", right_on="run_label"
         )
         grouped_stats["average_results_count"] = grouped_stats["average_results_count"].round(4)
-        grouped_stats["common_ancestor_pool_size"] = grouped_stats["common_ancestor_pool_size"].round(4)
+        grouped_stats["common_ancestor_pool_size"] = grouped_stats[
+            "common_ancestor_pool_size"
+        ].round(4)
         grouped_stats["precision"] = grouped_stats["precision"].round(4)
         grouped_stats["recall"] = grouped_stats["recall"].round(4)
         grouped_stats["f1"] = grouped_stats["f1"].round(4)
