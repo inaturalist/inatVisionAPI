@@ -19,21 +19,22 @@ class ModelTaxonomyDataframe:
                 "spatial_class_id": "Int64",
                 "name": pd.StringDtype()
             }
-        )
+        ).set_index("taxon_id", drop=False).sort_index()
         # left and right will be used to store nested set indices
-        self.df["left"] = pd.Series([], dtype=object)
-        self.df["right"] = pd.Series([], dtype=object)
         self.taxon_children = {}
         self.taxon_row_mapping = {}
         self.taxon_ancestors = {}
-        for index, taxon in self.df.iterrows():
-            self.taxon_row_mapping[taxon["taxon_id"]] = index
-            parent_id = 0 if pd.isna(taxon["parent_taxon_id"]) else int(taxon["parent_taxon_id"])
+        for taxon_id, parent_taxon_id in zip(self.df["taxon_id"], self.df["parent_taxon_id"]):
+            parent_id = 0 if pd.isna(parent_taxon_id) else int(parent_taxon_id)
             if parent_id not in self.taxon_children:
                 self.taxon_children[parent_id] = []
-            self.taxon_children[parent_id].append(taxon["taxon_id"])
+            self.taxon_children[parent_id].append(taxon_id)
+
+        self.nested_set_values = {}
         self.assign_nested_values()
-        self.df = self.df.set_index("taxon_id", drop=False).sort_index()
+        nested_set_values_df = pd.DataFrame.from_dict(self.nested_set_values, orient="index")
+        self.df = self.df.join(nested_set_values_df)
+
         if thresholds_path is not None:
             thresholds = pd.read_csv(thresholds_path)[["taxon_id", "thres"]]. \
                 rename(columns={"thres": "geo_threshold"}).set_index("taxon_id").sort_index()
@@ -47,8 +48,9 @@ class ModelTaxonomyDataframe:
     # way to calculate if a taxon is an ancestor or descendant of another
     def assign_nested_values(self, taxon_id=0, index=0, depth=0, ancestor_taxon_ids=[]):
         for child_id in self.taxon_children[taxon_id]:
-            self.df.at[self.taxon_row_mapping[child_id], "left"] = index
-            self.df.at[self.taxon_row_mapping[child_id], "depth"] = depth
+            self.nested_set_values[child_id] = {}
+            self.nested_set_values[child_id]["left"] = index
+            self.nested_set_values[child_id]["depth"] = depth
             child_ancestor_taxon_ids = ancestor_taxon_ids + [child_id]
             self.taxon_ancestors[child_id] = child_ancestor_taxon_ids
             index += 1
@@ -56,7 +58,7 @@ class ModelTaxonomyDataframe:
                 index = self.assign_nested_values(
                     child_id, index, depth + 1, child_ancestor_taxon_ids
                 )
-            self.df.at[self.taxon_row_mapping[child_id], "right"] = index
+            self.nested_set_values[child_id]["right"] = index
             index += 1
         return index
 

@@ -24,7 +24,10 @@ class InatVisionAPIResponses:
         leaf_scores = InatVisionAPIResponses.limit_leaf_scores_for_response(leaf_scores)
         leaf_scores = InatVisionAPIResponses.update_leaf_scores_scaling(leaf_scores)
         results = InatVisionAPIResponses.array_response_columns(
-            leaf_scores
+            leaf_scores.sort_values(
+                "combined_score",
+                ascending=False
+            ).head(10)
         ).to_dict(orient="records")
         common_ancestor = inferrer.common_ancestor_from_leaf_scores(leaf_scores, debug=True)
         if common_ancestor is not None:

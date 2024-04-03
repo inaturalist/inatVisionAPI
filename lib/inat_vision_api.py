@@ -19,6 +19,8 @@ class InatVisionAPI:
         self.app.secret_key = config["app_secret"]
         self.upload_folder = "static/"
         self.app.add_url_rule("/", "index", self.index_route, methods=["GET", "POST"])
+        self.app.add_url_rule("/refresh_synonyms", "refresh_synonyms",
+                              self.refresh_synonyms, methods=["POST"])
         self.app.add_url_rule("/h3_04", "h3_04", self.h3_04_route, methods=["GET"])
         self.app.add_url_rule("/h3_04_taxon_range", "h3_04_taxon_range",
                               self.h3_04_taxon_range_route, methods=["GET"])
@@ -29,6 +31,10 @@ class InatVisionAPI:
 
     def setup_inferrer(self, config):
         self.inferrer = InatInferrer(config)
+
+    def refresh_synonyms(self):
+        self.inferrer.refresh_synonyms_if_modified()
+        return ("", 204)
 
     def h3_04_route(self):
         return self.h3_04_default_route(self.inferrer.h3_04_geo_results_for_taxon)

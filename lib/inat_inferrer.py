@@ -21,12 +21,12 @@ class InatInferrer:
     MINIMUM_GEO_SCORE = 0.005
     COMMON_ANCESTOR_CUTOFF_RATIO = 0.01
     COMMON_ANCESTOR_WINDOW = 15
+    SYNONYMS_CHECK_FREQUENCY = 60
 
     def __init__(self, config):
         self.config = config
         self.setup_taxonomy()
         self.setup_synonyms()
-        self.setup_synonym_taxonomy()
         self.setup_vision_model()
         self.setup_elevation_dataframe()
         self.setup_geo_model()
@@ -38,12 +38,29 @@ class InatInferrer:
             self.config["tf_elev_thresholds"] if "tf_elev_thresholds" in self.config else None
         )
 
+    def check_for_modified_synonyms(self):
+        # only run the refresh check again if `SYNONYMS_CHECK_FREQUENCY` seconds have passed
+        if not hasattr(self, "synonym_refresh_check_time") or (
+            time.time() - self.synonym_refresh_check_time > InatInferrer.SYNONYMS_CHECK_FREQUENCY
+        ):
+            self.refresh_synonyms_if_modified()
+
+    def refresh_synonyms_if_modified(self):
+        self.synonym_refresh_check_time = time.time()
+        # only process the synonyms file if it has changed since last being processed
+        if os.path.exists(self.config["synonyms_path"]) and (
+            not hasattr(self, "synonyms_path_updated_at") or  # noqa: W504
+            os.path.getmtime(self.config["synonyms_path"]) != self.synonyms_path_updated_at
+        ):
+            self.setup_synonyms()
+
     def setup_synonyms(self):
-        self.synonyms = None
         if "synonyms_path" not in self.config:
+            self.synonyms = None
             return
 
         if not os.path.exists(self.config["synonyms_path"]):
+            self.synonyms = None
             return
 
         self.synonyms = pd.read_csv(
@@ -56,6 +73,17 @@ class InatInferrer:
                 "name": pd.StringDtype()
             }
         )
+
+        # create a dict indexed by model_taxon_id for efficient synonym mappings at inference time
+        self.synonyms_by_model_taxon_id = {}
+        for synonym in self.synonyms.to_dict("records"):
+            if not synonym["model_taxon_id"] in self.synonyms_by_model_taxon_id:
+                self.synonyms_by_model_taxon_id[synonym["model_taxon_id"]] = []
+            self.synonyms_by_model_taxon_id[synonym["model_taxon_id"]].append(synonym)
+
+        # record when the synonyms file was updated to know later when to refresh it
+        self.synonyms_path_updated_at = os.path.getmtime(self.config["synonyms_path"])
+        self.setup_synonym_taxonomy()
 
     def setup_synonym_taxonomy(self):
         if self.synonyms is None:
@@ -73,7 +101,7 @@ class InatInferrer:
         if not self.taxonomy.leaf_df.index.equals(synonym_taxonomy.leaf_df.index):
             error = "Synonym taxonomy does not match the model taxonomy"
             print(error)
-            raise RuntimeError(error)
+            return
 
         synonym_taxon_ids = np.unique(pd.array(self.synonyms["taxon_id"].dropna().values))
         synonym_taxonomy_taxon_ids = np.unique(
@@ -90,7 +118,7 @@ class InatInferrer:
             error = "There are taxa in the synonyms file not present in the synonyms " + \
                 f"taxonomy:  {synonym_taxon_ids_not_present_in_taxonomy}"
             print(error)
-            raise RuntimeError(error)
+            return
 
         synonym_taxonomy.leaf_df["has_synonyms"] = False
         # mark taxa that should be replaced or removed as having synonyms
@@ -197,6 +225,9 @@ class InatInferrer:
             raw_vision_scores, raw_geo_scores, filter_taxon, debug
         )
         combined_scores = self.map_result_synonyms(combined_scores, debug)
+        # for any taxon that doesn't have a geo threshold, set it to 1 which is the highest
+        # possible value, and thus all its taxa will not be considered "expected nearby"
+        combined_scores["geo_threshold"] = combined_scores["geo_threshold"].fillna(1)
         if debug:
             print("Prediction Time: %0.2fms" % ((time.time() - start_time) * 1000.))
         return combined_scores
@@ -252,22 +283,20 @@ class InatInferrer:
 
         if debug:
             start_time = time.time()
-        # create an empty dataframe to hold synonym replacements
-        synonyms_dataframe = pd.DataFrame(
-            columns=leaf_scores.columns
-        ).set_index("taxon_id", drop=False)
         # loop through the taxa in leaf_scores that have synonym mappings
-        for taxon in leaf_scores[
+        leaf_taxa = leaf_scores[
             leaf_scores.taxon_id.isin(self.synonyms["model_taxon_id"])
-        ].to_dict("records"):
-            for synonym in self.synonyms[
-                self.synonyms["model_taxon_id"] == taxon["taxon_id"]
-            ].to_dict("records"):
-                # the taxon has been remove, so there is no replacement
+        ].to_dict("records")
+        replacements = {}
+        for taxon in leaf_taxa:
+            if taxon["taxon_id"] not in self.synonyms_by_model_taxon_id:
+                continue
+            for synonym in self.synonyms_by_model_taxon_id[taxon["taxon_id"]]:
+                # the taxon has been removed, so there is no replacement
                 if pd.isna(synonym["taxon_id"]):
                     continue
 
-                # the replace some attributes of the leaf_scores taxon, while keeping
+                # replace some attributes of the leaf_scores taxon, while keeping
                 # all other columns, like the scores, untouched
                 replacement = taxon.copy()
                 replacement["parent_taxon_id"] = synonym["parent_taxon_id"]
@@ -277,13 +306,14 @@ class InatInferrer:
                 replacement["left"] = np.nan
                 replacement["right"] = np.nan
                 # add the replacement taxon to the synonyms dataframe
-                synonyms_dataframe.loc[replacement["taxon_id"]] = replacement
+                replacements[replacement["taxon_id"]] = replacement
         # remove all taxa from leaf scores that had synonym mappings
         leaf_scores = leaf_scores.query("has_synonyms == False")
-        if not synonyms_dataframe.empty:
+        if replacements:
             # inject the synonym replacements into leaf_scores
             leaf_scores = pd.concat([
-                leaf_scores.query("has_synonyms == False"), synonyms_dataframe
+                leaf_scores,
+                pd.DataFrame.from_dict(replacements, orient="index")
             ], axis=0)
         if debug:
             print("Synonym Mapping Time: %0.2fms" % ((time.time() - start_time) * 1000.))
