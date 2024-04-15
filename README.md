@@ -2,6 +2,10 @@
 
 We're doing some computer vision stuff at iNat.
 
+#### models
+
+We don't share our models publicly. You could train your own models or perhaps find one from one of the model zoos and adapt it.
+
 #### os x dependencies
 - `brew install libmagic`
 
