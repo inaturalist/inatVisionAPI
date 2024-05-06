@@ -30,5 +30,5 @@ tifffile==2024.2.12;python_version>="3.11"
 tifffile==2023.7.10;python_version=="3.8"
 umap-learn==0.5.5
 uWSGI==2.0.24
-Werkzeug==3.0.1
+Werkzeug==3.0.3
 WTForms==3.1.2
