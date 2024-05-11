@@ -86,7 +86,14 @@ def main(args):
             "leaf_class_id",
             "iconic_class_id"
         ]
-    ).dropna(subset=["leaf_class_id"])
+    )
+
+    if args.inner_nodes:
+        taxa = taxa.dropna(subset=["leaf_class_id"])
+        class_id_column_name = "spatial_class_id"
+    else:
+        class_id_column_name = "leaf_class_id"
+
     taxon_ids = taxa.taxon_id
     if args.stop_after is not None:
         taxon_ids = taxon_ids[0:args.stop_after]
@@ -94,7 +101,7 @@ def main(args):
     area = h3.hex_area(resolution)
     for taxon_id in tqdm(taxon_ids):
         try:
-            class_of_interest = mtd.df.loc[taxon_id]["leaf_class_id"]
+            class_of_interest = mtd.df.loc[taxon_id][class_id_column_name]
         except Exception:
             print("not in the model for some reason")
             continue
@@ -104,8 +111,19 @@ def main(args):
         gdfk["pred"] = tf.squeeze(preds).numpy()
 
         # make presence absence dataset
-        target_spatial_grid_counts = \
-            train_df_h3[train_df_h3.taxon_id == taxon_id].index.value_counts()
+        if args.inner_nodes:
+            taxon = mtd.df.loc[taxon_id]
+            taxa_of_interest = mtd.df[
+                (mtd.df.left >= taxon.left) & (mtd.df.right <= taxon.right)
+            ]
+
+            target_spatial_grid_counts = \
+                train_df_h3[train_df_h3.taxon_id.isin(
+                    taxa_of_interest.taxon_id)].index.value_counts()
+        else:
+            target_spatial_grid_counts = \
+                train_df_h3[train_df_h3.taxon_id == taxon_id].index.value_counts()
+            
         presences = gdfk.loc[target_spatial_grid_counts.index]["pred"]
         if len(presences) == 0:
             print("not present")
@@ -174,6 +192,7 @@ if __name__ == "__main__":
     parser.add_argument("--h3_resolution", type=int, default=4,
                         help="grid resolution from 0 - 15, lower numbers are coarser/faster. "
                         "Currently using 4")
+    parser.add_argument("--inner_nodes", action="store_true")  # on/off flag
     parser.add_argument("--stop_after", type=int,
                         help="just run the first x taxa")
     args = parser.parse_args()
