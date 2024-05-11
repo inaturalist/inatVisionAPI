@@ -126,7 +126,7 @@ def main(args):
             
         presences = gdfk.loc[target_spatial_grid_counts.index]["pred"]
         if len(presences) == 0:
-            print("not present")
+            print("taxon id {} not found in spatial train df".format(taxon_id))
             continue
 
         # calculate threhold
