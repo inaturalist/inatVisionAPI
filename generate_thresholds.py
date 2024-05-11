@@ -69,7 +69,7 @@ def main(args):
         "longitude": "lng"
     }, axis=1)
     train_df = train_df[train_df.captive == 0]  # no-CID ok, wild only
-    train_df.drop(["captive"], axis=1)
+    train_df.drop(["captive"], axis=1, inplace=True)
     train_df_h3 = train_df.h3.geo_to_h3(args.h3_resolution)
     all_spatial_grid_counts = train_df_h3.index.value_counts()
     presence_absence = pd.DataFrame({
