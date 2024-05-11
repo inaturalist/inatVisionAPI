@@ -116,8 +116,15 @@ def main(args):
     print("read in the taxonomy...")
     taxa = pd.read_csv(
         args.taxonomy,
-        usecols=["taxon_id", "leaf_class_id", "iconic_class_id"]
-    ).dropna(subset=["leaf_class_id"])
+        usecols=["taxon_id", "leaf_class_id", "spatial_class_id", "iconic_class_id"]
+    )
+
+    if args.inner_nodes:
+        taxa = taxa.dropna(subset=["leaf_class_id"])
+        class_id_column_name = "leaf_class_id"
+    else:
+        class_id_column_name = "spatial_class_id"
+
     taxon_ids = taxa.taxon_id
     if args.stop_after is not None:
         taxon_ids = taxon_ids[0:args.stop_after]
@@ -184,7 +191,7 @@ def main(args):
 
         # get model predictions and threshold
         try:
-            class_of_interest = mtd.df.loc[taxon_id]["leaf_class_id"]
+            class_of_interest = mtd.df.loc[taxon_id][class_id_column_name]
         except Exception:
             print("not in the model for some reason")
             continue
@@ -251,6 +258,7 @@ if __name__ == "__main__":
                         help="Path to indices dir.", required=True)
     parser.add_argument("--output_path", type=str,
                         help="file to write thesholds.", required=True)
+    parser.add_argument("--inner_nodes", action="store_true")  # on/off flag
     parser.add_argument("--stop_after", type=int,
                         help="just run the first x taxa")
     args = parser.parse_args()
