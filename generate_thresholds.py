@@ -90,9 +90,9 @@ def main(args):
 
     if args.inner_nodes:
         taxa = taxa.dropna(subset=["leaf_class_id"])
-        class_id_column_name = "spatial_class_id"
-    else:
         class_id_column_name = "leaf_class_id"
+    else:
+        class_id_column_name = "spatial_class_id"
 
     taxon_ids = taxa.taxon_id
     if args.stop_after is not None:
