@@ -84,6 +84,7 @@ def main(args):
         usecols=[
             "taxon_id",
             "leaf_class_id",
+            "spatial_class_id",
             "iconic_class_id"
         ]
     )
