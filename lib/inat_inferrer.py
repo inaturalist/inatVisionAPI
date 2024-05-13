@@ -556,17 +556,32 @@ class InatInferrer:
 
     @staticmethod
     def prepare_image_for_inference(file_path):
-        mime_type = magic.from_file(file_path, mime=True)
-        # attempt to convert non jpegs
-        if mime_type != "image/jpeg":
-            im = Image.open(file_path)
-            image = im.convert("RGB")
-        else:
-            image = tf.io.read_file(file_path)
-            image = tf.image.decode_jpeg(image, channels=3)
+        image = Image.open(file_path)
+        if image.mode != "RGB":
+            image = image.convert("RGB")
         image = tf.image.convert_image_dtype(image, tf.float32)
-        image = tf.image.resize_with_crop_or_pad(
-            image, 299, 299
+
+        eventual_size = 299
+        central_crop_factor = 0.875
+        resize_min_dimension = eventual_size/central_crop_factor
+
+        height, width = image.shape[0], image.shape[1]
+        resize_ratio = np.array([height, width]).min() / resize_min_dimension
+        new_height = math.ceil(height / resize_ratio)
+        new_width = math.ceil(width / resize_ratio)
+        # resize the image so we can take a central crop without needing to resample again
+        image = tf.image.resize(
+            image,
+            [new_height, new_width],
+            method=tf.image.ResizeMethod.AREA,
+            preserve_aspect_ratio=True
+        )
+        # determine the upper-left corner that needs to be used to grab the square crop
+        upper_left = math.floor((new_height - eventual_size) / 2)
+        upper_right = math.floor((new_width - eventual_size) / 2)
+        # take a square crop out of the resized image
+        image = tf.image.crop_to_bounding_box(
+            image, upper_left, upper_right, eventual_size, eventual_size
         )
         return tf.expand_dims(image, 0)
 
