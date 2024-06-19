@@ -40,5 +40,20 @@ ENV UWSGI_PLUGIN_DIR /usr/lib/uwsgi/plugins
 RUN mkdir /home/inaturalist/vision/uwsgi
 COPY docker/uwsgi.ini /home/inaturalist/vision/uwsgi.ini
 
+ARG GIT_BRANCH
+ARG GIT_COMMIT
+ARG IMAGE_TAG
+ARG BUILD_DATE
+
+ENV GIT_BRANCH=${GIT_BRANCH}
+ENV GIT_COMMIT=${GIT_COMMIT}
+ENV IMAGE_TAG=${IMAGE_TAG}
+ENV BUILD_DATE=${BUILD_DATE}
+
+RUN echo "GIT_BRANCH=${GIT_BRANCH}" > /home/inaturalist/vision/build_info
+RUN echo "GIT_COMMIT=${GIT_COMMIT}" >> /home/inaturalist/vision/build_info
+RUN echo "IMAGE_TAG=${IMAGE_TAG}" >> /home/inaturalist/vision/build_info
+RUN echo "BUILD_DATE=${BUILD_DATE}" >> /home/inaturalist/vision/build_info
+
 # Run with uwsgi
 CMD ["uwsgi", "--ini", "/home/inaturalist/vision/uwsgi.ini", "--stats", ":1717", "--stats-http"]

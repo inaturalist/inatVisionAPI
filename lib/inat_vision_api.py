@@ -28,6 +28,7 @@ class InatVisionAPI:
                               self.h3_04_taxon_range_comparison_route, methods=["GET"])
         self.app.add_url_rule("/h3_04_bounds", "h3_04_bounds",
                               self.h3_04_bounds_route, methods=["GET"])
+        self.app.add_url_rule("/build_info", "build_info", self.build_info_route, methods=["GET"])
 
     def setup_inferrer(self, config):
         self.inferrer = InatInferrer(config)
@@ -76,6 +77,14 @@ class InatVisionAPI:
         if results_dict is None:
             return f"Unknown taxon_id {taxon_id}", 422
         return results_dict
+
+    def build_info_route(self):
+        return {
+            "git_branch": os.environ["GIT_BRANCH"],
+            "git_commit": os.environ["GIT_COMMIT"],
+            "image_tag": os.environ["IMAGE_TAG"],
+            "build_date": os.environ["BUILD_DATE"]
+        }
 
     def index_route(self):
         form = ImageForm()

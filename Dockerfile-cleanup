@@ -16,5 +16,20 @@ RUN crontab -l | { cat; echo "0 * * * * sh /var/vision/script/logrotate-cron.sh"
 COPY docker/clean-static-cron.sh /var/vision/script/clean-static-cron.sh
 RUN crontab -l | { cat; echo "*/10 * * * * sh /var/vision/script/clean-static-cron.sh"; } | crontab -
 
+ARG GIT_BRANCH
+ARG GIT_COMMIT
+ARG IMAGE_TAG
+ARG BUILD_DATE
+
+ENV GIT_BRANCH=${GIT_BRANCH}
+ENV GIT_COMMIT=${GIT_COMMIT}
+ENV IMAGE_TAG=${IMAGE_TAG}
+ENV BUILD_DATE=${BUILD_DATE}
+
+RUN echo "GIT_BRANCH=${GIT_BRANCH}" > /var/vision/build_info
+RUN echo "GIT_COMMIT=${GIT_COMMIT}" >> /var/vision/build_info
+RUN echo "IMAGE_TAG=${IMAGE_TAG}" >> /var/vision/build_info
+RUN echo "BUILD_DATE=${BUILD_DATE}" >> /var/vision/build_info
+
 # Run cron
 CMD ["/bin/sh", "-c", "crond -f"]
