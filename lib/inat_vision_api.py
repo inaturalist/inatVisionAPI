@@ -80,10 +80,10 @@ class InatVisionAPI:
 
     def build_info_route(self):
         return {
-            "git_branch": os.environ["GIT_BRANCH"],
-            "git_commit": os.environ["GIT_COMMIT"],
-            "image_tag": os.environ["IMAGE_TAG"],
-            "build_date": os.environ["BUILD_DATE"]
+            "git_branch": os.getenv("GIT_BRANCH", ""),
+            "git_commit": os.getenv("GIT_COMMIT", ""),
+            "image_tag": os.getenv("IMAGE_TAG", ""),
+            "build_date": os.getenv("BUILD_DATE", "")
         }
 
     def index_route(self):
