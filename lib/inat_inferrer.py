@@ -144,6 +144,9 @@ class InatInferrer:
         self.geo_elevation_cells = InatInferrer.add_lat_lng_to_h3_geo_dataframe(
             self.geo_elevation_cells
         )
+        self.geo_elevation_cell_indices = {
+            index: idx for idx, index in enumerate(self.geo_elevation_cells.index)
+        }
 
     def setup_elevation_dataframe_from_worldclim(self, resolution):
         # preventing from processing at too high a resolution
@@ -413,6 +416,21 @@ class InatInferrer:
             print("Aggregation Time: %0.2fms" % ((time.time() - start_time) * 1000.))
             # InatInferrer.print_aggregated_scores(all_node_scores)
         return all_node_scores
+
+    def h3_04_geo_results_for_taxon_and_cell(self, taxon_id, lat, lng):
+        try:
+            taxon = self.taxonomy.df.loc[taxon_id]
+        except:
+            return None
+            # print(f"taxon `{taxon_id}` does not exist in the taxonomy")
+            # raise e
+        if pd.isna(taxon["leaf_class_id"]):
+            return None
+        h3_cell = h3.geo_to_h3(float(lat), float(lng), 4)
+        return float(self.geo_elevation_model.eval_one_class_elevation_from_features(
+            [self.geo_model_features[self.geo_elevation_cell_indices[h3_cell]]],
+            int(taxon["leaf_class_id"])
+        )[0][0]) / taxon["geo_threshold"]
 
     def h3_04_geo_results_for_taxon(self, taxon_id, bounds=[],
                                     thresholded=False, raw_results=False):

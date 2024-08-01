@@ -28,6 +28,8 @@ class InatVisionAPI:
                               self.h3_04_taxon_range_comparison_route, methods=["GET"])
         self.app.add_url_rule("/h3_04_bounds", "h3_04_bounds",
                               self.h3_04_bounds_route, methods=["GET"])
+        self.app.add_url_rule("/geo_scores_for_taxa", "geo_scores_for_taxa",
+                              self.geo_scores_for_taxa_route, methods=["POST"])
         self.app.add_url_rule("/build_info", "build_info", self.build_info_route, methods=["GET"])
 
     def setup_inferrer(self, config):
@@ -84,6 +86,14 @@ class InatVisionAPI:
             "git_commit": os.getenv("GIT_COMMIT", ""),
             "image_tag": os.getenv("IMAGE_TAG", ""),
             "build_date": os.getenv("BUILD_DATE", "")
+        }
+
+    def geo_scores_for_taxa_route(self):
+        return {
+            obs["id"]: self.inferrer.h3_04_geo_results_for_taxon_and_cell(
+                obs["taxon_id"], obs["lat"], obs["lng"]
+            )
+            for obs in request.json["observations"]
         }
 
     def index_route(self):
