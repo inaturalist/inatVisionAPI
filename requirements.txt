@@ -7,7 +7,7 @@ h3pandas==0.2.6
 itsdangerous==2.1.2
 Jinja2==3.1.4
 keras==2.14.0;python_version>="3.11"
-keras==2.12.0;python_version=="3.8"
+keras==2.13.1;python_version=="3.8"
 matplotlib==3.8.3;python_version>="3.11"
 matplotlib==3.7.5;python_version=="3.8"
 numpy==1.26.4;python_version>="3.11"
