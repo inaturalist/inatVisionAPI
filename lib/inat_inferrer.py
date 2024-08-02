@@ -272,6 +272,14 @@ class InatInferrer:
             # multipliedby the normalized geo score
             leaf_scores["combined_score"] = leaf_scores["normalized_vision_score"] * \
                 leaf_scores["normalized_geo_score"]
+
+        sum_of_root_node_aggregated_combined_scores = leaf_scores["combined_score"].sum()
+        if sum_of_root_node_aggregated_combined_scores > 0:
+            leaf_scores["normalized_combined_score"] = leaf_scores[
+                "combined_score"] / sum_of_root_node_aggregated_combined_scores
+        else:
+            leaf_scores["normalized_combined_score"] = 0
+
         if debug:
             print("Score Combining Time: %0.2fms" % ((time.time() - start_time) * 1000.))
         leaf_scores.reset_index(drop=True, inplace=True)
