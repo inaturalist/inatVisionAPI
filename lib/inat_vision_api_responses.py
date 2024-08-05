@@ -32,7 +32,7 @@ class InatVisionAPIResponses:
         common_ancestor = inferrer.common_ancestor_from_leaf_scores(leaf_scores, debug=True)
         if common_ancestor is not None:
             common_ancestor_frame = pd.DataFrame([common_ancestor])
-            common_ancestor_frame = InatVisionAPIResponses.update_aggregated_scores_scaling(
+            common_ancestor_frame = InatVisionAPIResponses.update_common_ancestor_scores_scaling(
                 common_ancestor_frame
             )
             common_ancestor = InatVisionAPIResponses.array_response_common_ancestor_columns(
@@ -135,7 +135,7 @@ class InatVisionAPIResponses:
     @staticmethod
     def update_leaf_scores_scaling(leaf_scores):
         score_columns = [
-            "combined_score",
+            "normalized_combined_score",
             "geo_score",
             "normalized_vision_score",
             "geo_threshold"
@@ -144,6 +144,16 @@ class InatVisionAPIResponses:
             score_columns
         ].multiply(100, axis="index")
         return leaf_scores
+
+    @staticmethod
+    def update_common_ancestor_scores_scaling(aggregated_scores):
+        score_columns = [
+            "normalized_aggregated_combined_score"
+        ]
+        aggregated_scores[score_columns] = aggregated_scores[
+            score_columns
+        ].multiply(100, axis="index")
+        return aggregated_scores
 
     @staticmethod
     def update_aggregated_scores_scaling(aggregated_scores):
@@ -162,7 +172,7 @@ class InatVisionAPIResponses:
     @staticmethod
     def array_response_columns(leaf_scores):
         columns_to_return = [
-            "combined_score",
+            "normalized_combined_score",
             "geo_score",
             "taxon_id",
             "name",
@@ -171,25 +181,26 @@ class InatVisionAPIResponses:
         ]
         column_mapping = {
             "taxon_id": "id",
-            "normalized_vision_score": "vision_score"
+            "normalized_vision_score": "vision_score",
+            "normalized_combined_score": "combined_score"
         }
         return leaf_scores[columns_to_return].rename(columns=column_mapping)
 
     @staticmethod
     def array_response_common_ancestor_columns(common_ancestor_dataframe):
         columns_to_return = [
-            "aggregated_combined_score",
+            "normalized_aggregated_combined_score",
             "aggregated_geo_score",
             "taxon_id",
             "name",
-            "normalized_aggregated_vision_score",
+            "aggregated_vision_score",
             "aggregated_geo_threshold"
         ]
         column_mapping = {
-            "aggregated_combined_score": "combined_score",
+            "normalized_aggregated_combined_score": "combined_score",
             "aggregated_geo_score": "geo_score",
             "taxon_id": "id",
-            "normalized_aggregated_vision_score": "vision_score",
+            "aggregated_vision_score": "vision_score",
             "aggregated_geo_threshold": "geo_threshold"
         }
         return common_ancestor_dataframe[columns_to_return].rename(columns=column_mapping)
