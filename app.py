@@ -14,7 +14,9 @@ if "APP_SECRET" in os.environ:
             "tf_geo_elevation_model_path": os.environ["TF_GEO_MODEL_PATH"],
             "elevation_h3_r4": os.environ["ELEVATION_H3_R4_PATH"],
             "tf_elev_thresholds": os.environ["GEO_THRESHOLDS_PATH"],
-            "taxon_ranges_path": os.environ["TAXON_RANGES_PATH"]
+            "taxon_ranges_path": os.environ["TAXON_RANGES_PATH"],
+            "synonyms_path": os.environ["SYNONYMS_PATH"],
+            "synonyms_taxonomy_path": os.environ["SYNONYMS_TAXONOMY_PATH"]
         }]
     }
     if "GEO_MIN" in os.environ:
