@@ -522,8 +522,15 @@ class InatInferrer:
     ):
         aggregated_score_to_use = "normalized_aggregated_vision_score" if \
             score_to_use == "vision_score" else "normalized_aggregated_combined_score"
+        # if using combined scores to aggregate, and there are taxa expected nearby,
+        # then add a query filter to only look at nearby taxa as common ancestor candidates
+        nearby_query_filter = ""
+        if aggregated_score_to_use == "normalized_aggregated_combined_score" and not \
+           aggregated_scores.query("aggregated_geo_score >= aggregated_geo_threshold").empty:
+            nearby_query_filter = " and aggregated_geo_score >= aggregated_geo_threshold"
         common_ancestor_candidates = aggregated_scores.query(
             f"{aggregated_score_to_use} > 0.78 and rank_level >= 20 and rank_level <= 33"
+            f"{nearby_query_filter}"
         ).sort_values(
             by=["rank_level"]
         )
