@@ -6,5 +6,5 @@ requests
 python-magic
 numpy==1.26.4;python_version>="3.11"
 numpy==1.23.5;python_version=="3.8"
-pandas==2.1.2;python_version>="3.11"
 pandas==2.0.3;python_version=="3.8"
+pandas==2.1.2;python_version>="3.11"

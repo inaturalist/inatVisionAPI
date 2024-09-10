@@ -24,17 +24,11 @@ class GeminiEvalutation:
         currentDatetime = datetime.now()
         self.start_timestamp = currentDatetime.strftime("%Y%m%d")
    
-    def export_path(self, filename_addition=None, label=None):
-        if label is None:
-            label = self.cmd_args["label"]
-        export_path = f"evaluation-results-{self.start_timestamp}-{label}"
-        if filename_addition:
-            export_path += f"-{filename_addition}"
-        export_path += ".csv"
-        if self.cmd_args["data_dir"]:
-            export_path = os.path.join(self.cmd_args["data_dir"], export_path)
-        return export_path
-     
+    def export_path(self, path, file):
+        label = self.cmd_args["label"]
+        export_path = f"{label}-{file}"
+        return os.path.join(self.cmd_args["data_dir"], export_path)
+        
     async def run_async(self):
         if self.cmd_args["data_dir"]:
             for file in sorted(os.listdir(self.cmd_args["data_dir"])):
@@ -44,7 +38,8 @@ class GeminiEvalutation:
                 path = os.path.join(self.cmd_args["data_dir"], file)
                 print(f"\nProcessing {file}")
                 await self.evaluate_observations_at_path(path)
-                self.display_and_save_results()
+                observations_export_path = self.export_path(path, file)
+                self.display_and_save_results(observations_export_path)
 
     async def evaluate_observations_at_path(self, path):
         N_WORKERS = 5
@@ -109,6 +104,33 @@ class GeminiEvalutation:
         observation.clean_gemini_name = ''.join(char for char in observation.gemini_response if char.isalpha() or char.isspace() or char == '-')
         print(observation.clean_gemini_name)
 
+        self.evaluate_taxon_name(observation)
+
+        if not observation.evaluation_status:
+            clean_gemini_name = observation.gemini_response.replace("*", "")
+            gbif_response = requests.get("https://api.gbif.org/v1/parser/name?name="+clean_gemini_name)
+            if gbif_response.status_code == 200:
+                gbif_data = gbif_response.json()
+                if gbif_data[0]:
+                    observation.clean_gemini_name = gbif_data[0]["canonicalName"] 
+                    observation.evaluate_using_gbif = True
+                    print(observation.clean_gemini_name + " (from GBIF)")
+                    
+                    self.evaluate_taxon_name(observation)
+
+        observation.matching_active = False
+        observation.matching_synonym = False
+        
+        if observation.evaluation_status:
+            if observation.evaluation_is_active and observation.evaluation_taxon_id == observation.taxon_id:
+                observation.matching_active = True
+            elif not observation.evaluation_is_active and observation.taxon_id in observation.evaluation_synonymous_taxon_ids:
+                observation.matching_synonym = True
+
+        observation.matching = observation.matching_active or observation.matching_synonym
+        observation.matching_int = int(observation.matching)
+
+    def evaluate_taxon_name(self, observation):
         original_taxa_url = self.TAXA_API_URL + str(observation.taxon_id) + "?fields=name,is_active,current_synonymous_taxon_ids"
         original_response = requests.get(original_taxa_url)
         if original_response.status_code == 200:
@@ -158,21 +180,8 @@ class GeminiEvalutation:
                     observation.evaluation_is_active = result["is_active"]
                     observation.evaluation_synonymous_taxon_ids = result["current_synonymous_taxon_ids"]
                     break
-        
-        observation.matching_active = False
-        observation.matching_synonym = False
-        
-        if observation.evaluation_status:
-            if observation.evaluation_is_active and observation.evaluation_taxon_id == observation.taxon_id:
-                observation.matching_active = True
-            elif not observation.evaluation_is_active and observation.taxon_id in observation.evaluation_synonymous_taxon_ids:
-                observation.matching_synonym = True
-
-        observation.matching = observation.matching_active or observation.matching_synonym
-        observation.matching_int = int(observation.matching)
-                
-    def display_and_save_results(self):
-        observations_export_path = self.export_path()
+    
+    def display_and_save_results(self, observations_export_path):
         test_observations_data = [obs.to_dict() for obs in self.test_observations.values()]
         test_observations_df = pd.DataFrame(test_observations_data)
         test_observations_df.to_csv(observations_export_path)
