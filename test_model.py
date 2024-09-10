@@ -17,11 +17,17 @@ CONFIG = yaml.safe_load(open("config.yml"))
 @click.option("--observation_id", type=str, help="Single observation UUID to test.")
 @click.option("--filter-iconic/--no-filter-iconic", show_default=True, default=True,
               help="Use iconic taxon for filtering.")
+@click.option("--gemini", is_flag=True, show_default=True, default=False,
+              help="Output debug messages.")
 @click.option("--debug", is_flag=True, show_default=True, default=False,
               help="Output debug messages.")
 def test(**args):
     if not args["path"] and not args["data_dir"]:
         print("\nYou must specify either a `--path` or a `--data_dir` option\n")
+        exit()
+
+    if args["gemini"] and ("gemini_api_key" not in CONFIG or not CONFIG["gemini_api_key"]):
+        print("\nconfig.yml does not configure a `gemini_api_key`\n")
         exit()
 
     # some libraries are slow to import, so wait until command is validated and properly invoked

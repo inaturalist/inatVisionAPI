@@ -11,6 +11,7 @@ import aiofiles
 import aiofiles.os
 import re
 import traceback
+import google.generativeai as gemini
 from datetime import datetime
 from PIL import Image
 from lib.test_observation import TestObservation
@@ -26,6 +27,11 @@ class VisionTesting:
         currentDatetime = datetime.now()
         self.start_timestamp = currentDatetime.strftime("%Y%m%d")
         self.set_run_hash(config)
+
+        if self.cmd_args["gemini"]:
+            gemini.configure(api_key=config["gemini_api_key"])
+            self.gemini_model = gemini.GenerativeModel(model_name="gemini-1.5-pro")
+            return
 
         print("Models:")
         for inferrer_index, model_config in enumerate(config["models"]):
@@ -64,14 +70,20 @@ class VisionTesting:
                 path = os.path.join(self.cmd_args["data_dir"], file)
                 print(f"\nProcessing {file}")
                 await self.test_observations_at_path(path, label)
-                self.display_and_save_results(label)
+                if self.cmd_args["gemini"]:
+                    self.display_and_save_results_gemini(label)
+                else:
+                    self.display_and_save_results(label)
         else:
             print(f"\nProcessing {self.cmd_args['path']}")
             await self.test_observations_at_path(self.cmd_args["path"], self.cmd_args["label"])
-            self.display_and_save_results(self.cmd_args["label"])
+            if self.cmd_args["gemini"]:
+                self.display_and_save_results_gemini(self.cmd_args["label"])
+            else:
+                self.display_and_save_results(self.cmd_args["label"])
 
     async def test_observations_at_path(self, path, label):
-        N_WORKERS = 5
+        N_WORKERS = 1 if self.cmd_args["gemini"] else 5
         self.limit = self.cmd_args["limit"] or 100
         target_observation_id = self.cmd_args["observation_id"]
         self.start_time = time.time()
@@ -96,7 +108,7 @@ class VisionTesting:
             for index, observation in df.iterrows():
                 if target_observation_id and observation.observation_id != target_observation_id:
                     continue
-                obs = TestObservation(observation.to_dict())
+                obs = TestObservation(observation.to_dict(), gemini_attributes=self.cmd_args["gemini"])
                 self.test_observations[obs.observation_id] = obs
                 self.queue.put_nowait(obs.observation_id)
 
@@ -113,9 +125,14 @@ class VisionTesting:
                 if self.processed_counter >= self.limit:
                     continue
                 observation = self.test_observations[observation_id]
-                await self.test_observation_async(observation)
-                if observation.inferrer_results is None:
-                    continue
+                if self.cmd_args["gemini"]:
+                    await self.test_observation_with_gemini_async(observation)
+                    if observation.gemini_response_text is None:
+                        continue
+                else:
+                    await self.test_observation_async(observation)
+                    if observation.inferrer_results is None:
+                        continue
                 self.processed_counter += 1
                 self.report_progress()
 
@@ -126,6 +143,60 @@ class VisionTesting:
 
             finally:
                 self.queue.task_done()
+
+    async def test_observation_with_gemini_async(self, observation):
+        cache_path = await self.download_photo_async(observation.photo_url)
+
+        # due to asynchronous processing, the requested limit of observations to test
+        # has been reached, so do not test this observation. The rest of this method
+        # will be processed synchronously, so no need to check this again this method
+        if self.processed_counter >= self.limit:
+            return
+
+        if cache_path is None \
+           or not os.path.exists(cache_path) \
+           or observation.lat == "" \
+           or observation.lng == "":
+            return
+
+        try:
+            print(f"Uploading {cache_path}, for {observation.observation_id}")
+            sample_file = gemini.upload_file(path=cache_path)
+            # Prompt the model with text and the previously uploaded image.
+            response = self.gemini_model.generate_content([
+                sample_file,
+                "Return only the binomial species name of the organism in the photo. "
+                f"The photo was taken on {observation.observed_on} "
+                f"at latitude {observation.lat} and longitude {observation.lng}"
+            ])
+            observation.gemini_response_text = response.text.strip()
+            print({observation.observation_id: observation.gemini_response_text})
+        except Exception as e:
+            observation.gemini_error = True
+            print(f"Error scoring observation {observation.observation_id}")
+            print(response)
+            print(e)
+            print(traceback.format_exc())
+            return
+
+    def display_and_save_results_gemini(self, label):
+        scored_observations = list(filter(
+            lambda observation: observation.gemini_response_text is not None or observation.gemini_error is not None,
+            self.test_observations.values()
+        ))
+        if len(scored_observations) == 0:
+            return
+        all_obs_responses = []
+        for obs in scored_observations:
+            all_obs_responses.append({
+                "observation_id": obs.observation_id,
+                "taxon_id": obs.taxon_id,
+                "taxon_ancestry": obs.taxon_ancestry,
+                "gemini_response": obs.gemini_response_text,
+                "gemini_error": obs.gemini_error
+            })
+        export_path = self.export_path("gemini", label=label)
+        pd.DataFrame(all_obs_responses).to_csv(export_path)
 
     def display_and_save_results(self, label):
         scored_observations = list(filter(
