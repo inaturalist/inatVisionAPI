@@ -426,15 +426,23 @@ class InatInferrer:
         return all_node_scores
 
     def h3_04_geo_results_for_taxon_and_cell(self, taxon_id, lat, lng):
+        if lat is None or lng is None:
+            return None
+        try:
+            lat_float = float(lat)
+            lng_float = float(lng)
+        except ValueError:
+            return None
+
         try:
             taxon = self.taxonomy.df.loc[taxon_id]
-        except:
+        except KeyError:
             return None
-            # print(f"taxon `{taxon_id}` does not exist in the taxonomy")
-            # raise e
-        if pd.isna(taxon["leaf_class_id"]):
+
+        if pd.isna(taxon["leaf_class_id"]) or pd.isna(taxon["geo_threshold"]):
             return None
-        h3_cell = h3.geo_to_h3(float(lat), float(lng), 4)
+
+        h3_cell = h3.geo_to_h3(lat_float, lng_float, 4)
         return float(self.geo_elevation_model.eval_one_class_elevation_from_features(
             [self.geo_model_features[self.geo_elevation_cell_indices[h3_cell]]],
             int(taxon["leaf_class_id"])
