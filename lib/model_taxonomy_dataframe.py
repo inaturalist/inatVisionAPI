@@ -1,4 +1,5 @@
 import pandas as pd
+import math
 
 
 class ModelTaxonomyDataframe:
@@ -38,6 +39,10 @@ class ModelTaxonomyDataframe:
         if thresholds_path is not None:
             thresholds = pd.read_csv(thresholds_path)[["taxon_id", "thres"]]. \
                 rename(columns={"thres": "geo_threshold"}).set_index("taxon_id").sort_index()
+            # round thresholds down to 5 decimal places
+            thresholds["geo_threshold"] = thresholds["geo_threshold"].apply(
+                lambda x: math.floor(x * 100000) / 100000
+            )
             self.df = self.df.join(thresholds)
 
         # create a data frame with just the leaf taxa using leaf_class_id as the index
