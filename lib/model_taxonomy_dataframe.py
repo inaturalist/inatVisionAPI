@@ -39,9 +39,9 @@ class ModelTaxonomyDataframe:
         if thresholds_path is not None:
             thresholds = pd.read_csv(thresholds_path)[["taxon_id", "thres"]]. \
                 rename(columns={"thres": "geo_threshold"}).set_index("taxon_id").sort_index()
-            # round thresholds down to 5 decimal places
+            # round thresholds down to 5 decimal places, as long as that won't make it 0
             thresholds["geo_threshold"] = thresholds["geo_threshold"].apply(
-                lambda x: math.floor(x * 100000) / 100000
+                lambda x: x if x < 0.00001 else math.floor(x * 100000) / 100000
             )
             self.df = self.df.join(thresholds)
 
