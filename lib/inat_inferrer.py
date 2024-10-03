@@ -465,7 +465,7 @@ class InatInferrer:
         geo_score_cells = self.geo_elevation_cells.copy()
         geo_score_cells["geo_score"] = tf.squeeze(geo_scores).numpy()
         if thresholded:
-            geo_score_cells = geo_score_cells.query(f'geo_score > {taxon["geo_threshold"]}')
+            geo_score_cells = geo_score_cells.query(f'geo_score >= {taxon["geo_threshold"]}')
         else:
             # return scores more than 10% of the taxon threshold, or more than 0.0001, whichever
             # is smaller. This reduces data needed to be redendered client-side for the Data Layer
@@ -477,10 +477,14 @@ class InatInferrer:
             min = geo_score_cells["geo_score"].min()
             max = geo_score_cells["geo_score"].max()
             geo_score_cells = InatInferrer.filter_geo_dataframe_by_bounds(geo_score_cells, bounds)
-            # perform a log transform on the scores based on the min/max score for the unbounded set
-            geo_score_cells["geo_score"] = \
-                (np.log10(geo_score_cells["geo_score"]) - math.log10(min)) / \
-                (math.log10(max) - math.log10(min))
+            if min == max:
+                # all scores are the same, so no transform is needed and all cells get the max value
+                geo_score_cells["geo_score"] = 1
+            else:
+                # perform a log transform based on the min/max score for the unbounded set
+                geo_score_cells["geo_score"] = \
+                    (np.log10(geo_score_cells["geo_score"]) - math.log10(min)) / \
+                    (math.log10(max) - math.log10(min))
 
         if raw_results:
             return geo_score_cells
@@ -519,11 +523,22 @@ class InatInferrer:
             taxon_id, bounds=None, thresholded=True, raw_results=True)
         if geomodel_results is None:
             return
+        swlat = geomodel_results["lat"].min()
+        swlng = geomodel_results["lng"].min()
+        nelat = geomodel_results["lat"].max()
+        nelng = geomodel_results["lng"].max()
+        # when the the bounds edges have the same values, add a small buffer
+        if swlat == nelat:
+            swlat -= 0.3
+            nelat += 0.3
+        if swlng == nelng:
+            swlng -= 0.3
+            nelng += 0.3
         return {
-            "swlat": geomodel_results["lat"].min(),
-            "swlng": geomodel_results["lng"].min(),
-            "nelat": geomodel_results["lat"].max(),
-            "nelng": geomodel_results["lng"].max()
+            "swlat": swlat,
+            "swlng": swlng,
+            "nelat": nelat,
+            "nelng": nelng
         }
 
     def common_ancestor_from_leaf_scores(
