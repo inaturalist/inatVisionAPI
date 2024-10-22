@@ -21,6 +21,42 @@ def ignore_shapely_deprecation_warning(message, category, filename, lineno, file
         return None
     return warnings.defaultaction(message, category, filename, lineno, file, line)
 
+def _load_train_data_csv(path):
+    print("loading in the training data from csv...")
+    train_df = pd.read_csv(
+        path,
+        usecols=[
+            "taxon_id",
+            "latitude",
+            "longitude",
+            "captive"
+        ]
+    )
+    return train_df
+
+def _load_train_data_parquet(path):
+    print("loading in the training data from parquet...")
+    train_df = pd.read_parquet(path)
+    train_df = train_df[["taxon_id", "latitude", "longitude", "captive"]]
+    return train_df
+
+def _load_train_data(path):
+    if path.endswith(".csv"):
+        train_df = _load_train_data_csv(path)
+    elif path.endswith(".parquet"):
+        train_df = _load_train_data_parquet(path)
+    else:
+        assert False, "spatial data train df format not supported."
+    
+    train_df.rename({
+        "latitude": "lat",
+        "longitude": "lng",
+    }, axis=1, inplace=True)
+    train_df = train_df[train_df.captive==0] # no-CID ok, wild only
+    train_df.drop(["captive"], axis=1)
+    return train_df
+ 
+
 
 def main(args):
     print("loading in the model...")
@@ -56,21 +92,9 @@ def main(args):
     )
 
     print("loading in the training data...")
-    train_df = pd.read_csv(
-        args.train_spatial_data,
-        usecols=[
-            "taxon_id",
-            "latitude",
-            "longitude",
-            "captive"
-        ]
-    ).rename({
-        "latitude": "lat",
-        "longitude": "lng"
-    }, axis=1)
-    train_df = train_df[train_df.captive == 0]  # no-CID ok, wild only
-    train_df.drop(["captive"], axis=1)
+    train_df = _load_train_data(args.train_spatial_data)
     train_df_h3 = train_df.h3.geo_to_h3(args.h3_resolution)
+
     all_spatial_grid_counts = train_df_h3.index.value_counts()
     presence_absence = pd.DataFrame({
         "background": all_spatial_grid_counts,
