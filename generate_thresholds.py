@@ -93,6 +93,7 @@ def main(args):
 
     print("loading in the training data...")
     train_df = _load_train_data(args.train_spatial_data)
+    print("making h3 labels for training data...")
     train_df_h3 = train_df.h3.geo_to_h3(args.h3_resolution)
 
     all_spatial_grid_counts = train_df_h3.index.value_counts()
