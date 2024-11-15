@@ -1,5 +1,4 @@
 import time
-import magic
 import tensorflow as tf
 import pandas as pd
 import h3
@@ -8,6 +7,14 @@ import math
 import os
 import tifffile
 import numpy as np
+import urllib
+import hashlib
+import magic
+import aiohttp
+import aiofiles
+import aiofiles.os
+import asyncio
+
 from PIL import Image
 from lib.tf_gp_elev_model import TFGeoPriorModelElev
 from lib.vision_inferrer import VisionInferrer
@@ -609,6 +616,64 @@ class InatInferrer:
 
         # otherwise return no results
         return leaf_scores.head(0)
+
+    async def embeddings_for_photos(self, photos):
+        response = {}
+        async with aiohttp.ClientSession() as session:
+            queue = asyncio.Queue()
+            workers = [asyncio.create_task(self.embeddings_worker_task(queue, response, session))
+                       for _ in range(5)]
+            for photo in photos:
+                queue.put_nowait(photo)
+            await queue.join()
+            for worker in workers:
+                worker.cancel()
+        return response
+
+    async def embeddings_worker_task(self, queue, response, session):
+        while not queue.empty():
+            photo = await queue.get()
+            try:
+                embedding = await self.embedding_for_photo(photo["url"], session)
+                response[photo["id"]] = embedding
+            finally:
+                queue.task_done()
+
+    async def embedding_for_photo(self, url, session):
+        if url is None:
+            return
+
+        try:
+            cache_path = await self.download_photo_async(url, session)
+            if cache_path is None:
+                return
+            image = InatInferrer.prepare_image_for_inference(cache_path)
+        except urllib.error.HTTPError:
+            return
+        return self.vision_inferrer.signature_for_image(image).tolist()
+
+    async def download_photo_async(self, url, session):
+        checksum = hashlib.md5(url.encode()).hexdigest()
+        cache_path = os.path.join(self.upload_folder, "download-" + checksum) + ".jpg"
+        if await aiofiles.os.path.exists(cache_path):
+            return cache_path
+        try:
+            async with session.get(url, timeout=10) as resp:
+                if resp.status == 200:
+                    f = await aiofiles.open(cache_path, mode="wb")
+                    await f.write(await resp.read())
+                    await f.close()
+        except asyncio.TimeoutError as e:
+            print("`download_photo_async` timed out")
+            print(e)
+        if not os.path.exists(cache_path):
+            return
+        mime_type = magic.from_file(cache_path, mime=True)
+        if mime_type != "image/jpeg":
+            im = Image.open(cache_path)
+            rgb_im = im.convert("RGB")
+            rgb_im.save(cache_path)
+        return cache_path
 
     @staticmethod
     def prepare_image_for_inference(file_path):

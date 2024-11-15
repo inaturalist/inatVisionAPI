@@ -30,6 +30,8 @@ class InatVisionAPI:
                               self.h3_04_bounds_route, methods=["GET"])
         self.app.add_url_rule("/geo_scores_for_taxa", "geo_scores_for_taxa",
                               self.geo_scores_for_taxa_route, methods=["POST"])
+        self.app.add_url_rule("/embeddings_for_photos", "embeddings_for_photos",
+                              self.embeddings_for_photos_route, methods=["POST"])
         self.app.add_url_rule("/build_info", "build_info", self.build_info_route, methods=["GET"])
 
     def setup_inferrer(self, config):
@@ -95,6 +97,12 @@ class InatVisionAPI:
             )
             for obs in request.json["observations"]
         }
+
+    async def embeddings_for_photos_route(self):
+        start_time = time.time()
+        response = await self.inferrer.embeddings_for_photos(request.json["photos"])
+        print("embeddings_for_photos_route Time: %0.2fms" % ((time.time() - start_time) * 1000.))
+        return response
 
     def index_route(self):
         form = ImageForm()
