@@ -647,9 +647,12 @@ class InatInferrer:
             cache_path = await self.download_photo_async(url, session)
             if cache_path is None:
                 return
-            image = InatInferrer.prepare_image_for_inference(cache_path)
+            return self.signature_for_image(cache_path)
         except urllib.error.HTTPError:
             return
+
+    def signature_for_image(self, image_path):
+        image = InatInferrer.prepare_image_for_inference(image_path)
         return self.vision_inferrer.signature_for_image(image).tolist()
 
     async def download_photo_async(self, url, session):

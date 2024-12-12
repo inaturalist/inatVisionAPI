@@ -154,7 +154,8 @@ class InatVisionAPI:
                     aggregated_scores, self.inferrer
                 )
             return InatVisionAPIResponses.aggregated_object_response(
-                leaf_scores, aggregated_scores, self.inferrer
+                leaf_scores, aggregated_scores, self.inferrer,
+                embedding=self.inferrer.signature_for_image(file_path)
             )
 
         # legacy dict response
@@ -162,7 +163,10 @@ class InatVisionAPI:
             return InatVisionAPIResponses.legacy_dictionary_response(leaf_scores, self.inferrer)
 
         if form.format.data == "object":
-            return InatVisionAPIResponses.object_response(leaf_scores, self.inferrer)
+            return InatVisionAPIResponses.object_response(
+                leaf_scores, self.inferrer,
+                embedding=self.inferrer.signature_for_image(file_path)
+            )
 
         return InatVisionAPIResponses.array_response(leaf_scores, self.inferrer)
 
