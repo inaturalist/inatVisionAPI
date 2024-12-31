@@ -13,4 +13,5 @@ class ImageForm(FlaskForm):
     taxon_id = StringField("taxon_id")
     geomodel = StringField("geomodel")
     aggregated = StringField("aggregated")
+    return_embedding = StringField("return_embedding")
     format = StringField("format")

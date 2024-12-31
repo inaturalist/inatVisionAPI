@@ -153,9 +153,11 @@ class InatVisionAPI:
                 return InatVisionAPIResponses.aggregated_tree_response(
                     aggregated_scores, self.inferrer
                 )
+            embedding = self.inferrer.signature_for_image(file_path) if \
+                form.return_embedding.data == "true" else None
             return InatVisionAPIResponses.aggregated_object_response(
                 leaf_scores, aggregated_scores, self.inferrer,
-                embedding=self.inferrer.signature_for_image(file_path)
+                embedding=embedding
             )
 
         # legacy dict response
@@ -163,9 +165,11 @@ class InatVisionAPI:
             return InatVisionAPIResponses.legacy_dictionary_response(leaf_scores, self.inferrer)
 
         if form.format.data == "object":
+            embedding = self.inferrer.signature_for_image(file_path) if \
+                form.return_embedding.data == "true" else None
             return InatVisionAPIResponses.object_response(
                 leaf_scores, self.inferrer,
-                embedding=self.inferrer.signature_for_image(file_path)
+                embedding=embedding
             )
 
         return InatVisionAPIResponses.array_response(leaf_scores, self.inferrer)

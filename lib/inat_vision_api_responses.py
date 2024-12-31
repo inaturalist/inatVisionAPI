@@ -20,7 +20,7 @@ class InatVisionAPIResponses:
         return InatVisionAPIResponses.array_response_columns(leaf_scores).to_dict(orient="records")
 
     @staticmethod
-    def object_response(leaf_scores, inferrer, embedding):
+    def object_response(leaf_scores, inferrer, embedding=None):
         leaf_scores = InatVisionAPIResponses.limit_leaf_scores_for_response(leaf_scores)
         leaf_scores = InatVisionAPIResponses.update_leaf_scores_scaling(leaf_scores)
         results = InatVisionAPIResponses.array_response_columns(
@@ -39,11 +39,13 @@ class InatVisionAPIResponses:
                 common_ancestor_frame
             ).to_dict(orient="records")[0]
 
-        return {
+        response = {
             "common_ancestor": common_ancestor,
             "results": results,
-            "embedding": embedding
         }
+        if embedding is not None:
+            response["embedding"] = embedding
+        return response
 
     @staticmethod
     def aggregated_tree_response(aggregated_scores, inferrer):
@@ -74,7 +76,7 @@ class InatVisionAPIResponses:
         return "<pre>" + "<br/>".join(printable_tree) + "</pre>"
 
     @staticmethod
-    def aggregated_object_response(leaf_scores, aggregated_scores, inferrer, embedding):
+    def aggregated_object_response(leaf_scores, aggregated_scores, inferrer, embedding=None):
         top_leaf_combined_score = aggregated_scores.query(
             "leaf_class_id.notnull()"
         ).sort_values(
@@ -117,11 +119,13 @@ class InatVisionAPIResponses:
                 common_ancestor_frame
             ).to_dict(orient="records")[0]
 
-        return {
+        response = {
             "common_ancestor": common_ancestor,
             "results": final_results.to_dict(orient="records"),
-            "embedding": embedding
         }
+        if embedding is not None:
+            response["embedding"] = embedding
+        return response
 
     @staticmethod
     def limit_leaf_scores_for_response(leaf_scores):
