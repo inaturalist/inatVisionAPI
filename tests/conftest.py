@@ -36,4 +36,5 @@ def inatInferrer(request, mocker):
             os.path.realpath(os.path.dirname(__file__) + "/fixtures/synonyms.csv")
     }
     mocker.patch("tensorflow.keras.models.load_model", return_value=MagicMock())
+    mocker.patch("tensorflow.keras.Model", return_value=MagicMock())
     return InatInferrer(config)

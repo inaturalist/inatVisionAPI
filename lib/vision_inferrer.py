@@ -16,8 +16,16 @@ class VisionInferrer:
             assert device.device_type != "GPU"
 
         self.vision_model = tf.keras.models.load_model(self.model_path, compile=False)
+        self.signature_model = tf.keras.Model(
+            inputs=self.vision_model.inputs,
+            outputs=self.vision_model.get_layer("global_average_pooling2d_5").output
+        )
+        self.signature_model.compile()
 
     # given an image object (usually coming from prepare_image_for_inference),
     # calculate vision results for the image
     def process_image(self, image):
         return self.vision_model(tf.convert_to_tensor(image), training=False)[0]
+
+    def signature_for_image(self, image):
+        return self.signature_model(tf.convert_to_tensor(image), training=False)[0].numpy()

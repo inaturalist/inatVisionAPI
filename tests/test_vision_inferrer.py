@@ -6,6 +6,7 @@ from lib.vision_inferrer import VisionInferrer
 class TestVisionInferrer:
     def test_initialization(self, mocker):
         mocker.patch("tensorflow.keras.models.load_model", return_value=MagicMock())
+        mocker.patch("tensorflow.keras.Model", return_value=MagicMock())
         model_path = "model_path"
         inferrer = VisionInferrer(model_path)
         assert inferrer.model_path == model_path
@@ -16,6 +17,7 @@ class TestVisionInferrer:
 
     def test_process_image(self, mocker):
         mocker.patch("tensorflow.keras.models.load_model", return_value=MagicMock())
+        mocker.patch("tensorflow.keras.Model", return_value=MagicMock())
         model_path = "model_path"
         inferrer = VisionInferrer(model_path)
         theimage = "theimage"

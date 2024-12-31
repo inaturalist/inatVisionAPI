@@ -30,6 +30,8 @@ class InatVisionAPI:
                               self.h3_04_bounds_route, methods=["GET"])
         self.app.add_url_rule("/geo_scores_for_taxa", "geo_scores_for_taxa",
                               self.geo_scores_for_taxa_route, methods=["POST"])
+        self.app.add_url_rule("/embeddings_for_photos", "embeddings_for_photos",
+                              self.embeddings_for_photos_route, methods=["POST"])
         self.app.add_url_rule("/build_info", "build_info", self.build_info_route, methods=["GET"])
 
     def setup_inferrer(self, config):
@@ -96,6 +98,12 @@ class InatVisionAPI:
             for obs in request.json["observations"]
         }
 
+    async def embeddings_for_photos_route(self):
+        start_time = time.time()
+        response = await self.inferrer.embeddings_for_photos(request.json["photos"])
+        print("embeddings_for_photos_route Time: %0.2fms" % ((time.time() - start_time) * 1000.))
+        return response
+
     def index_route(self):
         form = ImageForm()
         if "observation_id" in request.args:
@@ -145,8 +153,11 @@ class InatVisionAPI:
                 return InatVisionAPIResponses.aggregated_tree_response(
                     aggregated_scores, self.inferrer
                 )
+            embedding = self.inferrer.signature_for_image(file_path) if \
+                form.return_embedding.data == "true" else None
             return InatVisionAPIResponses.aggregated_object_response(
-                leaf_scores, aggregated_scores, self.inferrer
+                leaf_scores, aggregated_scores, self.inferrer,
+                embedding=embedding
             )
 
         # legacy dict response
@@ -154,7 +165,12 @@ class InatVisionAPI:
             return InatVisionAPIResponses.legacy_dictionary_response(leaf_scores, self.inferrer)
 
         if form.format.data == "object":
-            return InatVisionAPIResponses.object_response(leaf_scores, self.inferrer)
+            embedding = self.inferrer.signature_for_image(file_path) if \
+                form.return_embedding.data == "true" else None
+            return InatVisionAPIResponses.object_response(
+                leaf_scores, self.inferrer,
+                embedding=embedding
+            )
 
         return InatVisionAPIResponses.array_response(leaf_scores, self.inferrer)
 
