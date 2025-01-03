@@ -138,7 +138,11 @@ class InatInferrer:
         self.taxonomy = synonym_taxonomy
 
     def setup_vision_model(self):
-        self.vision_inferrer = VisionInferrer(self.config["vision_model_path"])
+        self.vision_inferrer = VisionInferrer(
+            self.config["vision_model_path"],
+            self.config["vision_model_signature_layer"] if "vision_model_signature_layer"
+                                                           in self.config else None
+        )
 
     def setup_elevation_dataframe(self):
         self.geo_elevation_cells = None
@@ -653,7 +657,10 @@ class InatInferrer:
 
     def signature_for_image(self, image_path):
         image = InatInferrer.prepare_image_for_inference(image_path)
-        return self.vision_inferrer.signature_for_image(image).tolist()
+        signature = self.vision_inferrer.signature_for_image(image)
+        if self.vision_inferrer.signature_for_image(image) is None:
+            return
+        return signature.tolist()
 
     async def download_photo_async(self, url, session):
         checksum = hashlib.md5(url.encode()).hexdigest()
