@@ -377,16 +377,23 @@ class VisionTesting:
         self, inferrer, observation, inferrer_results, summary_index, cutoff=False
     ):
         working_results = inferrer_results["scores"]
+        score_column = "vision_score" if summary_index == "vision" else "combined_score"
+        values = working_results.head(1)[score_column].values
+        if len(values) == 0:
+            top_score = 0
+        else:
+            top_score = values[0]
         if cutoff:
-            score_column = "vision_score" if summary_index == "vision" else "combined_score"
-            values = working_results.head(1)[score_column].values
-            if len(values) == 0:
-                top_score = 0
-            else:
-                top_score = values[0]
             working_results = working_results.query(
                 f"{score_column} > {top_score * 0.001}"
             ).head(10)
+
+        normalized_score_column = f"normalized_{score_column}"
+        normalized_values = working_results.head(1)[normalized_score_column].values
+        if len(values) == 0:
+            top_normalized_score = 0
+        else:
+            top_normalized_score = normalized_values[0]
 
         summary = {}
         common_ancestor = inferrer_results["common_ancestor"]
@@ -426,6 +433,9 @@ class VisionTesting:
             2 * summary["precision"]
         ) / sum_of_precision_and_recall
 
+        summary["top_score"] = top_normalized_score
+        summary["matching_score"] = self.matching_score(observation, working_results, normalized_score_column)
+
         return summary
 
     def matching_index(self, observation, results):
@@ -433,6 +443,16 @@ class VisionTesting:
             results["taxon_id"] == observation.taxon_id
         ].tolist()
         return matching_indices[0] if len(matching_indices) > 0 else None
+
+    def matching_score(self, observation, results, score_column):
+        matches = results.query(
+            f"taxon_id == {observation.taxon_id}"
+        )
+        values = matches.head(1)[score_column].values
+        if len(values) == 0:
+            return 0
+        else:
+            return values[0]
 
     async def download_photo_async(self, photo_url):
         checksum = hashlib.md5(photo_url.encode()).hexdigest()
