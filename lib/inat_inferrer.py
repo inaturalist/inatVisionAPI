@@ -139,9 +139,7 @@ class InatInferrer:
 
     def setup_vision_model(self):
         self.vision_inferrer = VisionInferrer(
-            self.config["vision_model_path"],
-            self.config["vision_model_signature_layer"] if "vision_model_signature_layer"
-                                                           in self.config else None
+            self.config["vision_model_path"]
         )
 
     def setup_elevation_dataframe(self):
@@ -194,10 +192,10 @@ class InatInferrer:
     def vision_predict(self, image, debug=False):
         if debug:
             start_time = time.time()
-        vision_scores = self.vision_inferrer.process_image(image)
+        results = self.vision_inferrer.process_image(image)
         if debug:
             print("Vision Time: %0.2fms" % ((time.time() - start_time) * 1000.))
-        return vision_scores
+        return results
 
     def geo_model_predict(self, lat, lng, debug=False):
         if debug:
@@ -233,7 +231,8 @@ class InatInferrer:
         if debug:
             start_time = time.time()
         image = InatInferrer.prepare_image_for_inference(file_path)
-        raw_vision_scores = self.vision_predict(image, debug)
+        vision_model_results = self.vision_predict(image, debug)
+        raw_vision_scores = vision_model_results["predictions"]
         raw_geo_scores = self.geo_model_predict(lat, lng, debug)
         combined_scores = self.combine_results(
             raw_vision_scores, raw_geo_scores, filter_taxon, debug
@@ -244,7 +243,10 @@ class InatInferrer:
         combined_scores["geo_threshold"] = combined_scores["geo_threshold"].fillna(1)
         if debug:
             print("Prediction Time: %0.2fms" % ((time.time() - start_time) * 1000.))
-        return combined_scores
+        return {
+            "combined_scores": combined_scores,
+            "features": vision_model_results["features"]
+        }
 
     def combine_results(self, raw_vision_scores, raw_geo_scores, filter_taxon, debug=False):
         if debug:
@@ -655,12 +657,16 @@ class InatInferrer:
         except urllib.error.HTTPError:
             return
 
-    def signature_for_image(self, image_path):
+    def signature_for_image(self, image_path, debug=False):
+        if debug:
+            start_time = time.time()
         image = InatInferrer.prepare_image_for_inference(image_path)
-        signature = self.vision_inferrer.signature_for_image(image)
-        if self.vision_inferrer.signature_for_image(image) is None:
+        signature = self.vision_inferrer.process_image(image)["features"]
+        if debug:
+            print("Signature Time: %0.2fms" % ((time.time() - start_time) * 1000.))
+        if signature is None:
             return
-        return signature.tolist()
+        return signature.numpy().tolist()
 
     async def download_photo_async(self, url, session):
         checksum = hashlib.md5(url.encode()).hexdigest()

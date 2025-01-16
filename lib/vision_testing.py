@@ -263,9 +263,10 @@ class VisionTesting:
                 lng = observation.lng
             try:
                 # traditional leaf combined scores, vision * geo
-                leaf_scores = inferrer.predictions_for_image(
+                predictions_for_image = inferrer.predictions_for_image(
                     cache_path, lat, lng, filter_taxon
                 )
+                leaf_scores = predictions_for_image["combined_scores"]
                 # save some high-level data like top 100 scores, common ancestor
                 inferrer_results[inferrer_index] = self.inferrer_results(
                     inferrer, observation, leaf_scores

@@ -25,25 +25,26 @@ class TestInatInferrer:
     def test_predictions_for_image(self, inatInferrer):
         test_image_path = \
             os.path.realpath(os.path.dirname(__file__) + "/fixtures/lamprocapnos_spectabilis.jpeg")
-        scores = inatInferrer.predictions_for_image(
+        results = inatInferrer.predictions_for_image(
             file_path=test_image_path,
             lat=42,
             lng=-71,
             filter_taxon=None,
             debug=True
         )
-        assert isinstance(scores, pd.DataFrame)
-        assert "leaf_class_id" in scores.columns
-        assert "parent_taxon_id" in scores.columns
-        assert "taxon_id" in scores.columns
-        assert "rank_level" in scores.columns
-        assert "iconic_class_id" in scores.columns
-        assert "vision_score" in scores.columns
-        assert "geo_score" in scores.columns
-        assert "normalized_vision_score" in scores.columns
-        assert "normalized_geo_score" in scores.columns
-        assert "combined_score" in scores.columns
-        assert "geo_threshold" in scores.columns
+        combined_scores = results["combined_scores"]
+        assert isinstance(combined_scores, pd.DataFrame)
+        assert "leaf_class_id" in combined_scores.columns
+        assert "parent_taxon_id" in combined_scores.columns
+        assert "taxon_id" in combined_scores.columns
+        assert "rank_level" in combined_scores.columns
+        assert "iconic_class_id" in combined_scores.columns
+        assert "vision_score" in combined_scores.columns
+        assert "geo_score" in combined_scores.columns
+        assert "normalized_vision_score" in combined_scores.columns
+        assert "normalized_geo_score" in combined_scores.columns
+        assert "combined_score" in combined_scores.columns
+        assert "geo_threshold" in combined_scores.columns
 
     def test_geo_model_predict_with_no_location(self, inatInferrer):
         assert inatInferrer.geo_model_predict(lat=None, lng=None) is None
@@ -63,19 +64,20 @@ class TestInatInferrer:
     def test_aggregate_results(self, inatInferrer):
         test_image_path = \
             os.path.realpath(os.path.dirname(__file__) + "/fixtures/lamprocapnos_spectabilis.jpeg")
-        scores = inatInferrer.predictions_for_image(
+        predictions_for_image = inatInferrer.predictions_for_image(
             file_path=test_image_path,
             lat=42,
             lng=-71,
             filter_taxon=None,
             debug=True
         )
-        scores.normalized_vision_score = 0.5
-        scores.normalized_geo_score = 0.5
-        scores.combined_score = 0.25
-        scores.geo_threshold = 0.001
+        combined_scores = predictions_for_image["combined_scores"]
+        combined_scores.normalized_vision_score = 0.5
+        combined_scores.normalized_geo_score = 0.5
+        combined_scores.combined_score = 0.25
+        combined_scores.geo_threshold = 0.001
         aggregated_scores = inatInferrer.aggregate_results(
-            leaf_scores=scores,
+            leaf_scores=combined_scores,
             debug=True
         )
         assert "aggregated_vision_score" in aggregated_scores.columns

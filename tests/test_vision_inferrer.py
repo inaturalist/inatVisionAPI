@@ -8,8 +8,7 @@ class TestVisionInferrer:
         mocker.patch("tensorflow.keras.models.load_model", return_value=MagicMock())
         mocker.patch("tensorflow.keras.Model", return_value=MagicMock())
         model_path = "model_path"
-        signature_layer = "signature_layer"
-        inferrer = VisionInferrer(model_path, signature_layer)
+        inferrer = VisionInferrer(model_path)
         assert inferrer.model_path == model_path
         tf.keras.models.load_model.assert_called_once_with(
             model_path,
@@ -20,11 +19,10 @@ class TestVisionInferrer:
         mocker.patch("tensorflow.keras.models.load_model", return_value=MagicMock())
         mocker.patch("tensorflow.keras.Model", return_value=MagicMock())
         model_path = "model_path"
-        signature_layer = "signature_layer"
-        inferrer = VisionInferrer(model_path, signature_layer)
+        inferrer = VisionInferrer(model_path)
         theimage = "theimage"
         inferrer.process_image(theimage)
-        inferrer.vision_model.assert_called_once_with(
+        inferrer.layered_model.assert_called_once_with(
             tf.convert_to_tensor(theimage),
             training=False
         )
