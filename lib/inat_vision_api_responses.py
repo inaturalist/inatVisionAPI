@@ -20,7 +20,7 @@ class InatVisionAPIResponses:
         return InatVisionAPIResponses.array_response_columns(leaf_scores).to_dict(orient="records")
 
     @staticmethod
-    def object_response(leaf_scores, inferrer, embedding=None):
+    def object_response(leaf_scores, inferrer, embedding=None, debug=False):
         leaf_scores = InatVisionAPIResponses.limit_leaf_scores_for_response(leaf_scores)
         leaf_scores = InatVisionAPIResponses.update_leaf_scores_scaling(leaf_scores)
         results = InatVisionAPIResponses.array_response_columns(
@@ -29,7 +29,7 @@ class InatVisionAPIResponses:
                 ascending=False
             ).head(10)
         ).to_dict(orient="records")
-        common_ancestor = inferrer.common_ancestor_from_leaf_scores(leaf_scores, debug=True)
+        common_ancestor = inferrer.common_ancestor_from_leaf_scores(leaf_scores, debug=debug)
         if common_ancestor is not None:
             common_ancestor_frame = pd.DataFrame([common_ancestor])
             common_ancestor_frame = InatVisionAPIResponses.update_common_ancestor_scores_scaling(
@@ -44,7 +44,7 @@ class InatVisionAPIResponses:
             "results": results,
         }
         if embedding is not None:
-            response["embedding"] = embedding
+            response["embedding"] = embedding.numpy().tolist()
         return response
 
     @staticmethod
@@ -124,7 +124,7 @@ class InatVisionAPIResponses:
             "results": final_results.to_dict(orient="records"),
         }
         if embedding is not None:
-            response["embedding"] = embedding
+            response["embedding"] = embedding.numpy().tolist()
         return response
 
     @staticmethod

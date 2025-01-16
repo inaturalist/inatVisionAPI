@@ -14,6 +14,7 @@ from inat_vision_api_responses import InatVisionAPIResponses
 class InatVisionAPI:
 
     def __init__(self, config):
+        self.debug = config["debug"] if "debug" in config else False
         self.setup_inferrer(config["models"][0])
         self.app = Flask(__name__)
         self.app.secret_key = config["app_secret"]
@@ -143,18 +144,18 @@ class InatVisionAPI:
 
     def score_image(self, form, file_path, lat, lng, iconic_taxon_id, geomodel):
         filter_taxon = self.inferrer.lookup_taxon(iconic_taxon_id)
-        leaf_scores = self.inferrer.predictions_for_image(
-            file_path, lat, lng, filter_taxon, debug=True
+        predictions_for_image = self.inferrer.predictions_for_image(
+            file_path, lat, lng, filter_taxon, debug=self.debug
         )
+        leaf_scores = predictions_for_image["combined_scores"]
 
         if form.aggregated.data == "true":
-            aggregated_scores = self.inferrer.aggregate_results(leaf_scores, debug=True)
+            aggregated_scores = self.inferrer.aggregate_results(leaf_scores, debug=self.debug)
             if form.format.data == "tree":
                 return InatVisionAPIResponses.aggregated_tree_response(
                     aggregated_scores, self.inferrer
                 )
-            embedding = self.inferrer.signature_for_image(file_path) if \
-                form.return_embedding.data == "true" else None
+            embedding = predictions_for_image["features"]
             return InatVisionAPIResponses.aggregated_object_response(
                 leaf_scores, aggregated_scores, self.inferrer,
                 embedding=embedding
@@ -165,11 +166,10 @@ class InatVisionAPI:
             return InatVisionAPIResponses.legacy_dictionary_response(leaf_scores, self.inferrer)
 
         if form.format.data == "object":
-            embedding = self.inferrer.signature_for_image(file_path) if \
-                form.return_embedding.data == "true" else None
+            embedding = predictions_for_image["features"]
             return InatVisionAPIResponses.object_response(
                 leaf_scores, self.inferrer,
-                embedding=embedding
+                embedding=embedding, debug=self.debug
             )
 
         return InatVisionAPIResponses.array_response(leaf_scores, self.inferrer)
