@@ -44,6 +44,7 @@ class ModelTaxonomyDataframe:
                 lambda x: x if x < 0.00001 else math.floor(x * 100000) / 100000
             )
             self.df = self.df.join(thresholds)
+            self.df["geo_threshold"] = self.df["geo_threshold"].fillna(1)
 
         # create a data frame with just the leaf taxa using leaf_class_id as the index
         self.leaf_df = self.df.query("leaf_class_id.notnull()").set_index(
