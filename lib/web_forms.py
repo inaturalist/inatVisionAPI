@@ -14,4 +14,5 @@ class ImageForm(FlaskForm):
     geomodel = StringField("geomodel")
     aggregated = StringField("aggregated")
     return_embedding = StringField("return_embedding")
+    common_ancestor_rank_type = StringField("common_ancestor_rank_type")
     format = StringField("format")

@@ -120,6 +120,7 @@ class InatVisionAPI:
             request_start_time = time.time()
             lat = form.lat.data
             lng = form.lng.data
+            common_ancestor_rank_type = form.common_ancestor_rank_type.data
             file_path = None
             image_uuid = None
             iconic_taxon_id = None
@@ -135,14 +136,16 @@ class InatVisionAPI:
             if file_path is None:
                 return render_template("home.html")
 
-            scores = self.score_image(form, file_path, lat, lng, iconic_taxon_id, geomodel)
+            scores = self.score_image(form, file_path, lat, lng, iconic_taxon_id, geomodel,
+                                      common_ancestor_rank_type)
             InatVisionAPI.write_logstash(
                 image_uuid, file_path, request_start_datetime, request_start_time)
             return scores
         else:
             return render_template("home.html")
 
-    def score_image(self, form, file_path, lat, lng, iconic_taxon_id, geomodel):
+    def score_image(self, form, file_path, lat, lng, iconic_taxon_id, geomodel,
+                    common_ancestor_rank_type=None):
         filter_taxon = self.inferrer.lookup_taxon(iconic_taxon_id)
         predictions_for_image = self.inferrer.predictions_for_image(
             file_path, lat, lng, filter_taxon, debug=self.debug
@@ -168,8 +171,11 @@ class InatVisionAPI:
         if form.format.data == "object":
             embedding = predictions_for_image["features"]
             return InatVisionAPIResponses.object_response(
-                leaf_scores, self.inferrer,
-                embedding=embedding, debug=self.debug
+                leaf_scores,
+                self.inferrer,
+                common_ancestor_rank_type=common_ancestor_rank_type,
+                embedding=embedding,
+                debug=self.debug
             )
 
         return InatVisionAPIResponses.array_response(leaf_scores, self.inferrer)

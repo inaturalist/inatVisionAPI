@@ -20,16 +20,20 @@ class InatVisionAPIResponses:
         return InatVisionAPIResponses.array_response_columns(leaf_scores).to_dict(orient="records")
 
     @staticmethod
-    def object_response(leaf_scores, inferrer, embedding=None, debug=False):
+    def object_response(leaf_scores, inferrer, common_ancestor_rank_type=None,
+                        embedding=None, debug=False):
         leaf_scores = InatVisionAPIResponses.limit_leaf_scores_for_response(leaf_scores)
         leaf_scores = InatVisionAPIResponses.update_leaf_scores_scaling(leaf_scores)
+        leaf_scores = inferrer.limit_leaf_scores_that_include_humans(leaf_scores)
         results = InatVisionAPIResponses.array_response_columns(
             leaf_scores.sort_values(
                 "combined_score",
                 ascending=False
             ).head(10)
         ).to_dict(orient="records")
-        common_ancestor = inferrer.common_ancestor_from_leaf_scores(leaf_scores, debug=debug)
+        common_ancestor = inferrer.common_ancestor_from_leaf_scores(
+            leaf_scores, common_ancestor_rank_type=common_ancestor_rank_type, debug=debug
+        )
         if common_ancestor is not None:
             common_ancestor_frame = pd.DataFrame([common_ancestor])
             common_ancestor_frame = InatVisionAPIResponses.update_common_ancestor_scores_scaling(
