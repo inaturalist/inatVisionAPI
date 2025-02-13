@@ -3,6 +3,7 @@ import tensorflow as tf
 from lib.res_layer import ResLayer
 from lib.tf_gp_elev_model import TFGeoPriorModelElev
 from unittest.mock import MagicMock
+import unittest.mock as mock
 
 
 class TestTfGpModel:
@@ -33,6 +34,7 @@ class TestTfGpModel:
         tf_gp_model.features_for_one_class_elevation([0], [0], [0])
 
     def test_eval_one_class_elevation_from_features(self, mocker):
+        tf.math.sigmoid = mock.create_autospec(tf.math.sigmoid)
         model_path = "model_path"
         mocker.patch("tensorflow.keras.models.load_model", return_value=MagicMock())
         mocker.patch("tensorflow.keras.activations.sigmoid", return_value=MagicMock())
@@ -40,4 +42,4 @@ class TestTfGpModel:
         mocker.patch("tensorflow.expand_dims", return_value=MagicMock())
         tf_gp_model = TFGeoPriorModelElev(model_path)
         tf_gp_model.eval_one_class_elevation_from_features("features", "class_of_interest")
-        tf.keras.activations.sigmoid.assert_called_once
+        tf.math.sigmoid.assert_called_once
