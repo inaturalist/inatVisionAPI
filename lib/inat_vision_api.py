@@ -5,10 +5,11 @@ import urllib
 import uuid
 import json
 
-from flask import Flask, request, render_template
+from flask import Flask, request, render_template, g
 from web_forms import ImageForm
 from inat_inferrer import InatInferrer
 from inat_vision_api_responses import InatVisionAPIResponses
+from logstasher import Logstasher
 
 
 class InatVisionAPI:
@@ -19,6 +20,7 @@ class InatVisionAPI:
         self.app = Flask(__name__)
         self.app.secret_key = config["app_secret"]
         self.upload_folder = "static/"
+        self.logstasher = Logstasher()
         self.app.add_url_rule("/", "index", self.index_route, methods=["GET", "POST"])
         self.app.add_url_rule("/refresh_synonyms", "refresh_synonyms",
                               self.refresh_synonyms, methods=["POST"])
@@ -34,6 +36,15 @@ class InatVisionAPI:
         self.app.add_url_rule("/embeddings_for_photos", "embeddings_for_photos",
                               self.embeddings_for_photos_route, methods=["POST"])
         self.app.add_url_rule("/build_info", "build_info", self.build_info_route, methods=["GET"])
+        self.app.before_request(self.before_request)
+        self.app.after_request(self.after_request)
+
+    def before_request(self):
+        g.request_start_time = time.time()
+
+    def after_request(self, response):
+        self.logstasher.log_request(request, response, g)
+        return response
 
     def setup_inferrer(self, config):
         self.inferrer = InatInferrer(config)
@@ -138,8 +149,8 @@ class InatVisionAPI:
 
             scores = self.score_image(form, file_path, lat, lng, iconic_taxon_id, geomodel,
                                       common_ancestor_rank_type)
-            InatVisionAPI.write_logstash(
-                image_uuid, file_path, request_start_datetime, request_start_time)
+            g.image_uuid = image_uuid
+            g.image_size = os.path.getsize(file_path)
             return scores
         else:
             return render_template("home.html")
@@ -235,20 +246,6 @@ class InatVisionAPI:
                 return None, "bounds must be floats", 422
             bounds = [swlat, swlng, nelat, nelng]
         return bounds, None, None
-
-    @staticmethod
-    def write_logstash(image_uuid, file_path, request_start_datetime, request_start_time):
-        request_end_time = time.time()
-        request_time = round((request_end_time - request_start_time) * 1000, 6)
-        logstash_log = open("log/logstash.log", "a")
-        log_data = {"@timestamp": request_start_datetime.isoformat(),
-                    "uuid": image_uuid,
-                    "duration": request_time,
-                    "client_ip": request.access_route[0],
-                    "image_size": os.path.getsize(file_path)}
-        json.dump(log_data, logstash_log)
-        logstash_log.write("\n")
-        logstash_log.close()
 
     @staticmethod
     def round_floats(o, sig):
