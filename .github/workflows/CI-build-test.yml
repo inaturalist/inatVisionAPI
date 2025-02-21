@@ -6,11 +6,11 @@ on:
 jobs:
   build-and-test:
     name: Build/Test 
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
         python-version:
-          - 3.8.10
+          - 3.10.12
           - 3.11.6
     steps:
     - uses: actions/checkout@v4
