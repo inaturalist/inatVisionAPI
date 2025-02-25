@@ -5,7 +5,6 @@ import geopandas as gpd
 import io
 import time
 import antimeridian
-import pandas as pd
 import numpy as np
 import os
 
@@ -14,39 +13,21 @@ from lib.inat_inferrer import InatInferrer
 
 
 CONFIG = yaml.safe_load(open("config.yml"))["models"][0]
+# do not use synonym mappings when generating geomodel ranges. Use the
+# original taxonomy and taxa that the model was trained with
+CONFIG.pop("synonyms_path", None)
+CONFIG.pop("synonyms_taxonomy_path", None)
 INFERRER = InatInferrer(CONFIG)
 MODEL_VERSION = CONFIG["name"]
 
 ANTIMERIDIAN_CROSSING_CELLS = INFERRER.geo_elevation_cells.query("abs(minx-maxx) > 90").index
 
-
-def generate_joined_taxonomy():
-    # the taxonomy file currently does not include rank as a string or iconic_taxon_id.
-    # Until it does, there is a separate file that includes these attributes that we can join
-    # with the original taxonomy data
-    additions = pd.read_csv(
-        CONFIG["taxonomy_additions_path"],
-        dtype={
-            "taxon_id": int,
-            "parent_taxon_id": "Int64",
-            "rank": pd.StringDtype(),
-            "rank_level": float,
-            "iconic_taxon_id": "Int64"
-        }
-    ).set_index("taxon_id", drop=False).sort_index()
-    joined_taxonomy = INFERRER.taxonomy.df.join(additions[["rank", "iconic_taxon_id"]])
-    joined_taxonomy = pd.merge(
-        joined_taxonomy, INFERRER.taxonomy.df[["name"]],
-        left_on="iconic_taxon_id", right_on="taxon_id"
-    ).rename(
-        columns={"name_y": "iconic_taxon_name"}
-    ).rename(
-        columns={"name_x": "name"}
-    ).set_index("taxon_id", drop=False)
-    return joined_taxonomy
-
-
-JOINED_TAXONOMY = generate_joined_taxonomy()
+ICONIC_TAXON_IDS = np.array(INFERRER.taxonomy.df["iconic_taxon_id"].dropna().unique()).astype(int)
+ICONIC_TAXON_IDS.sort()
+iconic_taxa_array = list(map(
+    lambda taxon_id: INFERRER.taxonomy.df.loc[taxon_id], ICONIC_TAXON_IDS
+))
+ICONIC_TAXA = {taxon["taxon_id"]: taxon for taxon in iconic_taxa_array}
 
 
 def remove_antimeridian_crossing_cells(cells):
@@ -54,6 +35,10 @@ def remove_antimeridian_crossing_cells(cells):
 
 
 def taxon_h3_cells_to_geojson(taxon, cells):
+    iconic_taxon = ICONIC_TAXA[taxon["iconic_taxon_id"]] if \
+        taxon["iconic_taxon_id"] in ICONIC_TAXA else None
+    if iconic_taxon is None:
+        print(f"Problem: {taxon['iconic_taxon_id']} has no matching iconic taxon")
     return {
         "type": "Feature",
         "properties": {
@@ -61,8 +46,8 @@ def taxon_h3_cells_to_geojson(taxon, cells):
             "parent_taxon_id": int(taxon["parent_taxon_id"]),
             "name": taxon["name"],
             "rank": taxon["rank"],
-            "iconic_taxon_id": int(taxon["iconic_taxon_id"]),
-            "iconic_taxon_name": taxon["iconic_taxon_name"],
+            "iconic_taxon_id": None if iconic_taxon is None else int(taxon["iconic_taxon_id"]),
+            "iconic_taxon_name": None if iconic_taxon is None else iconic_taxon["name"],
             "geomodel_version": MODEL_VERSION
         },
         "geometry": {
@@ -100,34 +85,8 @@ def geojson_for_taxon_pruned(taxon):
     return taxon_h3_cells_to_geojson(taxon, cells)
 
 
-def process_taxon_geojson(taxon_id):
-    taxon = JOINED_TAXONOMY.loc[taxon_id]
-    geojson = geojson_for_taxon(taxon)
-    if geojson is None:
-        return
-
-    geojson_file = open(f"geopackages/geojson/{taxon_id}_{MODEL_VERSION}.geojson", "w")
-    json.dump(geojson, geojson_file)
-    geojson_file.write("\n")
-    geojson_file.close()
-
-
-def process_taxon_shapefile(taxon_id):
-    taxon = JOINED_TAXONOMY.loc[taxon_id]
-    geojson = geojson_for_taxon(taxon)
-    if geojson is None:
-        return
-
-    geojson_file = io.BytesIO()
-    geojson_file.write(json.dumps(geojson).encode())
-    geojson_file.seek(0)
-
-    gdf = gpd.read_file(geojson_file)
-    gdf.to_file(f"geopackages/shapefiles/{taxon_id}_{MODEL_VERSION}.shp")
-
-
 def process_taxon_geopackge(taxon_id, geopackage_name):
-    taxon = JOINED_TAXONOMY.loc[taxon_id]
+    taxon = INFERRER.taxonomy.df.loc[taxon_id]
     geojson = geojson_for_taxon(taxon)
     if geojson is None:
         return
@@ -151,13 +110,13 @@ def process_taxa_featureset_geopackage(taxon_ids, geopackage_name):
     features = []
     # for taxon_id in taxon_ids:
     for taxon_id in tqdm(taxon_ids, maxinterval=10.0, miniters=20):
-        taxon = JOINED_TAXONOMY.loc[taxon_id]
+        taxon = INFERRER.taxonomy.df.loc[taxon_id]
         geojson = geojson_for_taxon(taxon)
         if geojson is None:
             continue
 
         # save the generated GeoJSON separately
-        geojson_file = open(f"geopackages/geojsons/{taxon_id}_{MODEL_VERSION}.geojson", "w")
+        geojson_file = open(f"geopackages/geojsons/{taxon_id}.geojson", "w")
         json.dump(geojson, geojson_file)
         geojson_file.write("\n")
         geojson_file.close()
@@ -177,27 +136,7 @@ def process_taxa_featureset_geopackage(taxon_ids, geopackage_name):
         f"geopackages/{geopackage_name}.gpkg",
         driver="GPKG"
     )
-
-
-def process_taxa_featureset_geojson(taxon_ids, geojson_name):
-    features = []
-    for taxon_id in taxon_ids:
-        taxon = JOINED_TAXONOMY.loc[taxon_id]
-        geojson = geojson_for_taxon(taxon)
-        if geojson is None:
-            continue
-
-        features.append(geojson)
-
-    geojson_file = io.BytesIO()
-    geojson = {
-        "type": "FeatureCollection",
-        "features": features
-    }
-    geojson_file = open(f"geopackages/geojson_{geojson_name}.geojson", "w")
-    json.dump(geojson, geojson_file)
-    geojson_file.write("\n")
-    geojson_file.close()
+    return len(features)
 
 
 # create output directories
@@ -207,31 +146,73 @@ if not os.path.exists("geopackages/geojsons"):
     os.makedirs("geopackages/geojsons")
 
 
+metadata = {
+    "version": MODEL_VERSION,
+    "ranges": 0,
+    "collections": {}
+}
+
+batch_size = 5000
+range_count = 0
 start_time = time.time()
-iconic_taxon_ids = np.array(JOINED_TAXONOMY["iconic_taxon_id"].unique())
-iconic_taxon_ids.sort()
 # loop through each iconic taxon
-for iconic_taxon_id in iconic_taxon_ids:
-    iconic_taxon = JOINED_TAXONOMY.loc[iconic_taxon_id]
+for iconic_taxon_id in ICONIC_TAXON_IDS:
+    iconic_taxon = INFERRER.taxonomy.df.loc[iconic_taxon_id]
     # fetch leaf taxon_ids within this iconic taxon
-    clade_taxon_ids = np.array(JOINED_TAXONOMY.query(
+    clade_taxon_ids = np.array(INFERRER.taxonomy.df.query(
         f"leaf_class_id.notnull() and iconic_taxon_id == {iconic_taxon_id}")["taxon_id"].values
     )
     clade_taxon_ids.sort()
 
-    print(f"{iconic_taxon['name']}: {clade_taxon_ids.size}")
-    batch_size = 5000
-    # split taxon_ids into batches of at most 5000
+    iconic_taxon_name = "OtherAnimalia" if iconic_taxon_id == 1 else iconic_taxon["name"]
+    print(f"{iconic_taxon_name}: {clade_taxon_ids.size}")
+
+    # split taxon_ids into batches of at most `batch_size`
     batches = np.split(clade_taxon_ids, np.arange(batch_size, len(clade_taxon_ids), batch_size))
+    iconic_taxon_range_count = 0
     for idx, batch_ids in enumerate(batches):
         # if there are multiple batches, include the ID range in the filename,
         # otherwise name the file after the iconic taxon and the model version
         if len(batches) > 1:
-            filename = f"{iconic_taxon['name']}_{batch_ids[0]}_{batch_ids[-1]}"
+            filename = f"{iconic_taxon_name}_{idx + 1}"
         else:
-            filename = iconic_taxon["name"]
-        filename = f"iNaturalist_geomodel_{MODEL_VERSION}_{filename}"
+            filename = iconic_taxon_name
+        filename = f"iNaturalist_geomodel_{filename}"
         print(f"    {filename}")
-        process_taxa_featureset_geopackage(batch_ids, filename)
+        # increment the clade range count by the number of ranges actually added
+        iconic_taxon_range_count += process_taxa_featureset_geopackage(batch_ids, filename)
+
+    # increment the count of total ranges
+    range_count += iconic_taxon_range_count
+    # add metadata for this iconic taxon
+    metadata["collections"][iconic_taxon_name] = {
+        "ranges": iconic_taxon_range_count,
+        "archives": len(batches)
+    }
+
+# write the metadata to file
+metadata["ranges"] = range_count
+metadata_file = open("geopackages/metadata.json", "w")
+json.dump(metadata, metadata_file, indent=2)
+metadata_file.write("\n")
+
+# write the taxonomy to file
+taxonomy_columns_to_export = [
+    "taxon_id",
+    "parent_taxon_id",
+    "name",
+    "rank_level",
+    "rank",
+    "iconic_taxon_id",
+    "is_leaf"
+]
+# convert rank_levels that do not have decimals to strings without the decimal value: 30.0 => 30
+INFERRER.taxonomy.df["rank_level"] = INFERRER.taxonomy.df["rank_level"].apply(
+    lambda x: str(int(x)) if x == int(x) else str(x)
+)
+# add a column with a boolean value indicating if the taxon is a model leaf node
+INFERRER.taxonomy.df["is_leaf"] = INFERRER.taxonomy.df["leaf_class_id"].notnull()
+INFERRER.taxonomy.df[taxonomy_columns_to_export].to_csv("geopackages/taxonomy.csv", index=False)
+
 
 print("Total Time: %0.2fs" % (time.time() - start_time))

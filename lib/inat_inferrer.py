@@ -77,7 +77,9 @@ class InatInferrer:
                 "parent_taxon_id": "Int64",
                 "taxon_id": "Int64",
                 "rank_level": float,
-                "name": pd.StringDtype()
+                "name": pd.StringDtype(),
+                "iconic_taxon_id": "Int64",
+                "rank": pd.StringDtype()
             }
         )
 
@@ -327,6 +329,8 @@ class InatInferrer:
                 replacement["taxon_id"] = synonym["taxon_id"]
                 replacement["rank_level"] = synonym["rank_level"]
                 replacement["name"] = synonym["name"]
+                replacement["iconic_taxon_id"] = synonym["iconic_taxon_id"]
+                replacement["rank"] = synonym["rank"]
                 replacement["left"] = np.nan
                 replacement["right"] = np.nan
                 # add the replacement taxon to the synonyms dataframe

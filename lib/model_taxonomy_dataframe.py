@@ -18,7 +18,9 @@ class ModelTaxonomyDataframe:
                 "leaf_class_id": "Int64",
                 "iconic_class_id": "Int64",
                 "spatial_class_id": "Int64",
-                "name": pd.StringDtype()
+                "name": pd.StringDtype(),
+                "iconic_taxon_id": "Int64",
+                "rank": pd.StringDtype()
             }
         ).set_index("taxon_id", drop=False).sort_index()
         # left and right will be used to store nested set indices
