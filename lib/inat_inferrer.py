@@ -77,7 +77,9 @@ class InatInferrer:
                 "parent_taxon_id": "Int64",
                 "taxon_id": "Int64",
                 "rank_level": float,
-                "name": pd.StringDtype()
+                "name": pd.StringDtype(),
+                "iconic_taxon_id": "Int64",
+                "rank": pd.StringDtype()
             }
         )
 
@@ -327,6 +329,8 @@ class InatInferrer:
                 replacement["taxon_id"] = synonym["taxon_id"]
                 replacement["rank_level"] = synonym["rank_level"]
                 replacement["name"] = synonym["name"]
+                replacement["iconic_taxon_id"] = synonym["iconic_taxon_id"]
+                replacement["rank"] = synonym["rank"]
                 replacement["left"] = np.nan
                 replacement["right"] = np.nan
                 # add the replacement taxon to the synonyms dataframe
@@ -732,10 +736,17 @@ class InatInferrer:
 
     @staticmethod
     def add_lat_lng_to_h3_geo_dataframe(geo_df):
-        geo_df = geo_df.h3.h3_to_geo()
-        geo_df["lng"] = geo_df["geometry"].x
-        geo_df["lat"] = geo_df["geometry"].y
-        geo_df.pop("geometry")
+        h3_cells_df = pd.DataFrame(index=geo_df.index)
+        # add h3 cell centroids as lat, lng
+        h3_centroids_df = h3_cells_df.copy().h3.h3_to_geo()
+        h3_centroids_df["lng"] = h3_centroids_df["geometry"].x
+        h3_centroids_df["lat"] = h3_centroids_df["geometry"].y
+        h3_centroids_df.pop("geometry")
+        geo_df = geo_df.join(h3_centroids_df)
+
+        # add h3 cell bounds as minx, miny, maxx, maxy
+        h3_bounds_df = h3_cells_df.copy().h3.h3_to_geo_boundary()
+        geo_df = geo_df.join(h3_bounds_df["geometry"].bounds)
         return geo_df
 
     @staticmethod
