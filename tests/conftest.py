@@ -9,7 +9,7 @@ from lib.model_taxonomy_dataframe import ModelTaxonomyDataframe
 def taxonomy():
     yield ModelTaxonomyDataframe(
         os.path.realpath(os.path.dirname(__file__) + "/fixtures/taxonomy.csv"),
-        os.path.realpath(os.path.dirname(__file__) + "/fixtures/thresholds.csv"),
+        os.path.realpath(os.path.dirname(__file__) + "/fixtures/thresholds.csv")
     )
 
 
@@ -24,21 +24,16 @@ def inatInferrer(request, mocker):
     config = {
         "vision_model_path": "vision_model_path.h5",
         "tf_geo_elevation_model_path": "tf_geo_elevation_model_path.h5",
-        "taxonomy_path": os.path.realpath(
-            os.path.dirname(__file__) + "/fixtures/taxonomy.csv"
-        ),
-        "elevation_h3_r4": os.path.realpath(
-            os.path.dirname(__file__) + "/fixtures/elevation.csv"
-        ),
-        "tf_elev_thresholds": os.path.realpath(
-            os.path.dirname(__file__) + "/fixtures/thresholds.csv"
-        ),
-        "taxon_ranges_path": os.path.realpath(
-            os.path.dirname(__file__) + "/fixtures/taxon_ranges"
-        ),
-        "synonyms_path": os.path.realpath(
-            os.path.dirname(__file__) + "/fixtures/synonyms.csv"
-        ),
+        "taxonomy_path":
+            os.path.realpath(os.path.dirname(__file__) + "/fixtures/taxonomy.csv"),
+        "elevation_h3_r4":
+            os.path.realpath(os.path.dirname(__file__) + "/fixtures/elevation.csv"),
+        "tf_elev_thresholds":
+            os.path.realpath(os.path.dirname(__file__) + "/fixtures/thresholds.csv"),
+        "taxon_ranges_path":
+            os.path.realpath(os.path.dirname(__file__) + "/fixtures/taxon_ranges"),
+        "synonyms_path":
+            os.path.realpath(os.path.dirname(__file__) + "/fixtures/synonyms.csv")
     }
     mocker.patch("tensorflow.keras.models.load_model", return_value=MagicMock())
     mocker.patch("tensorflow.keras.Model", return_value=MagicMock())
