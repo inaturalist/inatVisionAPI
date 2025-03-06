@@ -18,16 +18,16 @@ class TFGeoPriorModelElev(GeoInferrer):
         for device in visible_devices:
             assert device.device_type != "GPU"
         self.gpmodel = tf.keras.models.load_model(
-            model_path, custom_objects={"ResLayer": ResLayer}, compile=False
+            model_path,
+            custom_objects={"ResLayer": ResLayer}, 
+            compile=False
         )
 
-    def predict(
-        self, latitude: float, longitude: float, elevation: float
-    ) -> np.ndarray:
+    def predict(self, latitude: float, longitude: float, elevation: float) -> np.ndarray:
         encoded_loc = GeoInferrer.encode_loc([latitude], [longitude], [elevation])
-        output = self.gpmodel(
-            tf.convert_to_tensor(tf.expand_dims(encoded_loc[0], axis=0)), training=False
-        )[0]
+        output = self.gpmodel(tf.convert_to_tensor(
+            tf.expand_dims(encoded_loc[0], axis=0)
+        ), training=False)[0]
         return output
 
     def features_for_one_class_elevation(self, latitude, longitude, elevation):
@@ -58,10 +58,8 @@ class TFGeoPriorModelElev(GeoInferrer):
         # process just the one class
         return tf.math.sigmoid(
             tf.matmul(
-                tf.expand_dims(
-                    self.gpmodel.layers[5].weights[0][:, class_of_interest], axis=0
-                ),
+                tf.expand_dims(self.gpmodel.layers[5].weights[0][:, class_of_interest], axis=0),
                 features,
-                transpose_b=True,
+                transpose_b=True
             )
         ).numpy()
