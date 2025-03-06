@@ -1,10 +1,9 @@
 import pytest
 import tensorflow as tf
-from unittest.mock import MagicMock
-import unittest.mock as mock
-
 from lib.res_layer import ResLayer
 from lib.geo_inferrer_tf import TFGeoPriorModelElev
+from unittest.mock import MagicMock
+import unittest.mock as mock
 
 
 class TestTfGpModel:
@@ -17,7 +16,9 @@ class TestTfGpModel:
         mocker.patch("tensorflow.keras.models.load_model", return_value=MagicMock())
         TFGeoPriorModelElev(model_path)
         tf.keras.models.load_model.assert_called_once_with(
-            model_path, custom_objects={"ResLayer": ResLayer}, compile=False
+            model_path,
+            custom_objects={"ResLayer": ResLayer},
+            compile=False
         )
 
     def test_predict(self, mocker):
@@ -40,7 +41,5 @@ class TestTfGpModel:
         mocker.patch("tensorflow.matmul", return_value=MagicMock())
         mocker.patch("tensorflow.expand_dims", return_value=MagicMock())
         tf_gp_model = TFGeoPriorModelElev(model_path)
-        tf_gp_model.eval_one_class_elevation_from_features(
-            "features", "class_of_interest"
-        )
+        tf_gp_model.eval_one_class_elevation_from_features("features", "class_of_interest")
         tf.math.sigmoid.assert_called_once
