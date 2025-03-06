@@ -14,7 +14,7 @@ class ModelTestDataExportManager:
             return
 
         self.train_data_photo_ids = pd.concat(
-            map(lambda x: pd.read_csv(x, usecols=["photo_id"]),
+            map(lambda x: pd.read_parquet(x, columns=["photo_id"]),
                 self.cmd_args["exclude_train_photos_path"])
         ).drop_duplicates("photo_id").set_index("photo_id").sort_index().index
 

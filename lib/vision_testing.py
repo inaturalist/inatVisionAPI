@@ -435,7 +435,9 @@ class VisionTesting:
         ) / sum_of_precision_and_recall
 
         summary["top_score"] = top_normalized_score
-        summary["matching_score"] = self.matching_score(observation, working_results, normalized_score_column)
+        summary["matching_score"] = self.matching_score(
+            observation, working_results, normalized_score_column
+        )
 
         return summary
 

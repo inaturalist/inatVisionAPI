@@ -13,7 +13,7 @@ from tqdm.auto import tqdm
 from sklearn.metrics import precision_recall_curve
 import warnings
 from lib.model_taxonomy_dataframe import ModelTaxonomyDataframe
-from lib.tf_gp_elev_model import TFGeoPriorModelElev
+from lib.geo_inferrer_tf import TFGeoPriorModelElev
 
 
 def ignore_shapely_deprecation_warning(message, category, filename, lineno, file=None, line=None):
