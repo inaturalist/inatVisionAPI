@@ -42,18 +42,13 @@ class InatInferrer:
     def setup_taxonomy(self):
         self.taxonomy = ModelTaxonomyDataframe(
             self.config["taxonomy_path"],
-            (
-                self.config["tf_elev_thresholds"]
-                if "tf_elev_thresholds" in self.config
-                else None
-            ),
+            self.config["tf_elev_thresholds"] if "tf_elev_thresholds" in self.config else None
         )
 
     def check_for_modified_synonyms(self):
         # only run the refresh check again if `SYNONYMS_CHECK_FREQUENCY` seconds have passed
         if not hasattr(self, "synonym_refresh_check_time") or (
-            time.time() - self.synonym_refresh_check_time
-            > InatInferrer.SYNONYMS_CHECK_FREQUENCY
+            time.time() - self.synonym_refresh_check_time > InatInferrer.SYNONYMS_CHECK_FREQUENCY
         ):
             self.refresh_synonyms_if_modified()
 
@@ -61,9 +56,8 @@ class InatInferrer:
         self.synonym_refresh_check_time = time.time()
         # only process the synonyms file if it has changed since last being processed
         if os.path.exists(self.config["synonyms_path"]) and (
-            not hasattr(self, "synonyms_path_updated_at")  # noqa: W504
-            or os.path.getmtime(self.config["synonyms_path"])
-            != self.synonyms_path_updated_at
+            not hasattr(self, "synonyms_path_updated_at") or  # noqa: W504
+            os.path.getmtime(self.config["synonyms_path"]) != self.synonyms_path_updated_at
         ):
             self.setup_synonyms()
 
@@ -85,8 +79,8 @@ class InatInferrer:
                 "rank_level": float,
                 "name": pd.StringDtype(),
                 "iconic_taxon_id": "Int64",
-                "rank": pd.StringDtype(),
-            },
+                "rank": pd.StringDtype()
+            }
         )
 
         # create a dict indexed by model_taxon_id for efficient synonym mappings at inference time
@@ -109,11 +103,7 @@ class InatInferrer:
 
         synonym_taxonomy = ModelTaxonomyDataframe(
             self.config["synonyms_taxonomy_path"],
-            (
-                self.config["tf_elev_thresholds"]
-                if "tf_elev_thresholds" in self.config
-                else None
-            ),
+            self.config["tf_elev_thresholds"] if "tf_elev_thresholds" in self.config else None
         )
         # ensure the leaf_class_ids from the synonym taxonomy are identical
         # to the taxonomy generated at data export time
@@ -122,15 +112,11 @@ class InatInferrer:
             print(error)
             return
 
-        synonym_taxon_ids = np.unique(
-            pd.array(self.synonyms["taxon_id"].dropna().values)
-        )
+        synonym_taxon_ids = np.unique(pd.array(self.synonyms["taxon_id"].dropna().values))
         synonym_taxonomy_taxon_ids = np.unique(
-            pd.array(
-                synonym_taxonomy.df[
-                    synonym_taxonomy.df.taxon_id.isin(synonym_taxon_ids)
-                ]["taxon_id"].values
-            )
+            pd.array(synonym_taxonomy.df[
+                synonym_taxonomy.df.taxon_id.isin(synonym_taxon_ids)
+            ]["taxon_id"].values)
         )
         synonym_taxon_ids_not_present_in_taxonomy = np.setdiff1d(
             synonym_taxon_ids, synonym_taxonomy_taxon_ids
@@ -138,18 +124,16 @@ class InatInferrer:
         # ensure all taxa referenced in the synonym mappings file are present in the
         # updated taxonomy that should include all original taxa plus all synonyms
         if synonym_taxon_ids_not_present_in_taxonomy.size > 0:
-            error = (
-                "There are taxa in the synonyms file not present in the synonyms "
-                + f"taxonomy:  {synonym_taxon_ids_not_present_in_taxonomy}"
-            )
+            error = "There are taxa in the synonyms file not present in the synonyms " + \
+                f"taxonomy:  {synonym_taxon_ids_not_present_in_taxonomy}"
             print(error)
             return
 
         synonym_taxonomy.leaf_df["has_synonyms"] = False
         # mark taxa that should be replaced or removed as having synonyms
-        for index, taxon in self.taxonomy.leaf_df[
-            self.taxonomy.leaf_df["taxon_id"].isin(self.synonyms["model_taxon_id"])
-        ].iterrows():
+        for index, taxon in self.taxonomy.leaf_df[self.taxonomy.leaf_df["taxon_id"].isin(
+            self.synonyms["model_taxon_id"]
+        )].iterrows():
             synonym_taxonomy.leaf_df.loc[taxon["leaf_class_id"], "has_synonyms"] = True
 
         # replace the originally exported taxonomy with the updated taxonomy that includes synonyms
@@ -166,12 +150,8 @@ class InatInferrer:
             return
 
         # load elevation data stored at H3 resolution 4
-        self.geo_elevation_cells = (
-            pd.read_csv(self.config["elevation_h3_r4"])
-            .sort_values("h3_04")
-            .set_index("h3_04")
-            .sort_index()
-        )
+        self.geo_elevation_cells = pd.read_csv(self.config["elevation_h3_r4"]). \
+            sort_values("h3_04").set_index("h3_04").sort_index()
         self.geo_elevation_cells = InatInferrer.add_lat_lng_to_h3_geo_dataframe(
             self.geo_elevation_cells
         )
@@ -193,11 +173,7 @@ class InatInferrer:
             im_df = im_df.melt(id_vars=["index"])
             im_df.columns = ["lat", "lng", "elevation"]
             elev_dfh3 = im_df.h3.geo_to_h3(resolution)
-            elev_dfh3 = (
-                elev_dfh3.drop(columns=["lng", "lat"])
-                .groupby(f"h3_0{resolution}")
-                .mean()
-            )
+            elev_dfh3 = elev_dfh3.drop(columns=["lng", "lat"]).groupby(f"h3_0{resolution}").mean()
 
     def setup_geo_model(self):
         self.geo_elevation_model = None
@@ -213,20 +189,19 @@ class InatInferrer:
         )
 
         if hasattr(self.geo_elevation_model, "features_for_one_class_elevation"):
-            self.geo_model_features = (
-                self.geo_elevation_model.features_for_one_class_elevation(
-                    latitude=list(self.geo_elevation_cells.lat),
-                    longitude=list(self.geo_elevation_cells.lng),
-                    elevation=list(self.geo_elevation_cells.elevation),
-                )
+            self.geo_model_features = self.geo_elevation_model.features_for_one_class_elevation(
+                latitude=list(self.geo_elevation_cells.lat),
+                longitude=list(self.geo_elevation_cells.lng),
+                elevation=list(self.geo_elevation_cells.elevation)
             )
+
 
     def vision_predict(self, image, debug=False):
         if debug:
             start_time = time.time()
         results = self.vision_inferrer.process_image(image)
         if debug:
-            print("Vision Time: %0.2fms" % ((time.time() - start_time) * 1000.0))
+            print("Vision Time: %0.2fms" % ((time.time() - start_time) * 1000.))
         return results
 
     def geo_model_predict(self, lat, lng, debug=False):
@@ -244,10 +219,9 @@ class InatInferrer:
         # get the average elevation of the above H3 cell
         elevation = self.geo_elevation_cells.loc[h3_cell].elevation
         geo_scores = self.geo_elevation_model.predict(
-            h3_cell_centroid[0], h3_cell_centroid[1], float(elevation)
-        )
+            h3_cell_centroid[0], h3_cell_centroid[1], float(elevation))
         if debug:
-            print("Geo Time: %0.2fms" % ((time.time() - start_time) * 1000.0))
+            print("Geo Time: %0.2fms" % ((time.time() - start_time) * 1000.))
         return geo_scores
 
     def lookup_taxon(self, taxon_id):
@@ -263,11 +237,6 @@ class InatInferrer:
     def predictions_for_image(self, file_path, lat, lng, filter_taxon, debug=False):
         if debug:
             start_time = time.time()
-
-        # if isinstance(self.vision_inferrer, VisionInferrerCoreML):
-        #     image = self.vision_inferrer.load_image(file_path)
-        #     vision_model_results = self.vision_predict(image, debug)
-        # else:
         image = InatInferrer.prepare_image_for_inference(file_path)
         vision_model_results = self.vision_predict(image, debug)
         raw_vision_scores = vision_model_results["predictions"]
@@ -280,18 +249,16 @@ class InatInferrer:
         # possible value, and thus all its taxa will not be considered "expected nearby"
         combined_scores["geo_threshold"] = combined_scores["geo_threshold"].fillna(1)
         if debug:
-            print("Prediction Time: %0.2fms" % ((time.time() - start_time) * 1000.0))
+            print("Prediction Time: %0.2fms" % ((time.time() - start_time) * 1000.))
         return {
             "combined_scores": combined_scores,
-            "features": vision_model_results["features"],
+            "features": vision_model_results["features"]
         }
 
-    def combine_results(
-        self, raw_vision_scores, raw_geo_scores, filter_taxon, debug=False
-    ):
+    def combine_results(self, raw_vision_scores, raw_geo_scores, filter_taxon, debug=False):
         if debug:
             start_time = time.time()
-        no_geo_scores = raw_geo_scores is None
+        no_geo_scores = (raw_geo_scores is None)
 
         # make a copy of the model taxonomy leaf nodes to be used for storing results. Skip any
         # filtering at this stage as the taxonomy dataframe needs to have the same number of
@@ -302,11 +269,8 @@ class InatInferrer:
         # add a column for geo scores
         leaf_scores["geo_score"] = 0 if no_geo_scores else raw_geo_scores
         # set a lower limit for geo scores if there are any
-        leaf_scores["normalized_geo_score"] = (
-            0
-            if no_geo_scores
+        leaf_scores["normalized_geo_score"] = 0 if no_geo_scores \
             else leaf_scores["geo_score"].clip(InatInferrer.MINIMUM_GEO_SCORE, None)
-        )
 
         # if filtering by a taxon, restrict results to that taxon and its descendants
         if filter_taxon is not None:
@@ -316,9 +280,8 @@ class InatInferrer:
             )
             # normalize the vision scores so they add up to 1 after filtering
             sum_of_vision_scores = leaf_scores["vision_score"].sum()
-            leaf_scores["normalized_vision_score"] = (
+            leaf_scores["normalized_vision_score"] = \
                 leaf_scores["vision_score"] / sum_of_vision_scores
-            )
         else:
             # when not filtering by a taxon, the normalized vision score is the same as the original
             leaf_scores["normalized_vision_score"] = leaf_scores["vision_score"]
@@ -330,26 +293,18 @@ class InatInferrer:
         else:
             # the combined score is simply the normalized vision score
             # multipliedby the normalized geo score
-            leaf_scores["combined_score"] = (
-                leaf_scores["normalized_vision_score"]
-                * leaf_scores["normalized_geo_score"]
-            )
+            leaf_scores["combined_score"] = leaf_scores["normalized_vision_score"] * \
+                leaf_scores["normalized_geo_score"]
 
-        sum_of_root_node_aggregated_combined_scores = leaf_scores[
-            "combined_score"
-        ].sum()
+        sum_of_root_node_aggregated_combined_scores = leaf_scores["combined_score"].sum()
         if sum_of_root_node_aggregated_combined_scores > 0:
-            leaf_scores["normalized_combined_score"] = (
-                leaf_scores["combined_score"]
-                / sum_of_root_node_aggregated_combined_scores
-            )
+            leaf_scores["normalized_combined_score"] = leaf_scores[
+                "combined_score"] / sum_of_root_node_aggregated_combined_scores
         else:
             leaf_scores["normalized_combined_score"] = 0
 
         if debug:
-            print(
-                "Score Combining Time: %0.2fms" % ((time.time() - start_time) * 1000.0)
-            )
+            print("Score Combining Time: %0.2fms" % ((time.time() - start_time) * 1000.))
         leaf_scores.reset_index(drop=True, inplace=True)
         return leaf_scores
 
@@ -389,24 +344,18 @@ class InatInferrer:
         leaf_scores = leaf_scores.query("has_synonyms == False")
         if replacements:
             # inject the synonym replacements into leaf_scores
-            leaf_scores = pd.concat(
-                [leaf_scores, pd.DataFrame.from_dict(replacements, orient="index")],
-                axis=0,
-            )
+            leaf_scores = pd.concat([
+                leaf_scores,
+                pd.DataFrame.from_dict(replacements, orient="index")
+            ], axis=0)
         if debug:
-            print(
-                "Synonym Mapping Time: %0.2fms" % ((time.time() - start_time) * 1000.0)
-            )
+            print("Synonym Mapping Time: %0.2fms" % ((time.time() - start_time) * 1000.))
         return leaf_scores
 
-    def aggregate_results(
-        self,
-        leaf_scores,
-        debug=False,
-        score_ratio_cutoff=0.001,
-        max_leaf_scores_to_consider=None,
-        column_for_cutoff="combined_score",
-    ):
+    def aggregate_results(self, leaf_scores, debug=False,
+                          score_ratio_cutoff=0.001,
+                          max_leaf_scores_to_consider=None,
+                          column_for_cutoff="combined_score"):
         if debug:
             start_time = time.time()
 
@@ -415,38 +364,26 @@ class InatInferrer:
 
         # copy columns from the already calculated leaf scores including scores
         # and class_id columns which will not be populated for synonyms in the taxonomy
-        all_node_scores = pd.merge(
-            all_node_scores,
-            leaf_scores[
-                [
-                    "taxon_id",
-                    "vision_score",
-                    "normalized_vision_score",
-                    "geo_score",
-                    "combined_score",
-                    "normalized_geo_score",
-                    "leaf_class_id",
-                    "iconic_class_id",
-                    "spatial_class_id",
-                ]
-            ],
+        all_node_scores = pd.merge(all_node_scores, leaf_scores[[
+            "taxon_id", "vision_score", "normalized_vision_score", "geo_score", "combined_score",
+            "normalized_geo_score", "leaf_class_id", "iconic_class_id", "spatial_class_id"]],
             on="taxon_id",
             how="left",
-            suffixes=["_x", None],
+            suffixes=["_x", None]
         ).set_index("taxon_id", drop=False)
 
         # calculate the highest combined score from leaf_scores
-        top_combined_score = (
-            leaf_scores.sort_values(column_for_cutoff, ascending=False)
-            .head(1)[column_for_cutoff]
-            .values[0]
-        )
+        top_combined_score = leaf_scores.sort_values(
+            column_for_cutoff, ascending=False
+        ).head(1)[column_for_cutoff].values[0]
         # define some cutoff based on a percentage of the top combined score. Taxa with
         # scores below the cutoff will be ignored when aggregating scores up the taxonomy
         cutoff = top_combined_score * score_ratio_cutoff
 
         # restrict score aggregation to results where the combined score is above the cutoff
-        scores_to_aggregate = leaf_scores.query(f"{column_for_cutoff} > {cutoff}")
+        scores_to_aggregate = leaf_scores.query(
+            f"{column_for_cutoff} > {cutoff}"
+        )
         if max_leaf_scores_to_consider is not None:
             scores_to_aggregate = scores_to_aggregate.sort_values(
                 column_for_cutoff, ascending=False
@@ -459,7 +396,7 @@ class InatInferrer:
             scores_to_aggregate["normalized_vision_score"],
             scores_to_aggregate["geo_score"],
             scores_to_aggregate["combined_score"],
-            scores_to_aggregate["geo_threshold"],
+            scores_to_aggregate["geo_threshold"]
         ):
             # loop through the pre-calculated ancestors of this result's taxon
             for ancestor_taxon_id in self.taxonomy.taxon_ancestors[taxon_id]:
@@ -467,36 +404,23 @@ class InatInferrer:
                 if ancestor_taxon_id not in aggregated_scores:
                     aggregated_scores[ancestor_taxon_id] = {}
                     aggregated_scores[ancestor_taxon_id]["aggregated_vision_score"] = 0
-                    aggregated_scores[ancestor_taxon_id][
-                        "aggregated_combined_score"
-                    ] = 0
+                    aggregated_scores[ancestor_taxon_id]["aggregated_combined_score"] = 0
                     aggregated_scores[ancestor_taxon_id]["aggregated_geo_score"] = 0
-                    aggregated_scores[ancestor_taxon_id]["aggregated_geo_threshold"] = (
-                        geo_threshold if (ancestor_taxon_id == taxon_id) else 1.0
-                    )
+                    aggregated_scores[ancestor_taxon_id][
+                        "aggregated_geo_threshold"
+                    ] = geo_threshold if (ancestor_taxon_id == taxon_id) else 1.0
                 # aggregated vision and combined scores are sums of descendant scores
-                aggregated_scores[ancestor_taxon_id][
-                    "aggregated_vision_score"
-                ] += vision_score
-                aggregated_scores[ancestor_taxon_id][
-                    "aggregated_combined_score"
-                ] += combined_score
+                aggregated_scores[ancestor_taxon_id]["aggregated_vision_score"] += vision_score
+                aggregated_scores[ancestor_taxon_id]["aggregated_combined_score"] += combined_score
 
                 # aggregated geo score is the max of descendant geo scores
-                if (
-                    geo_score
-                    > aggregated_scores[ancestor_taxon_id]["aggregated_geo_score"]
-                ):
-                    aggregated_scores[ancestor_taxon_id][
-                        "aggregated_geo_score"
-                    ] = geo_score
+                if geo_score > aggregated_scores[ancestor_taxon_id]["aggregated_geo_score"]:
+                    aggregated_scores[ancestor_taxon_id]["aggregated_geo_score"] = geo_score
 
                 # aggregated geo threshold is the min of descendant geo thresholds
-                if (
-                    ancestor_taxon_id != taxon_id
-                    and geo_threshold
-                    < aggregated_scores[ancestor_taxon_id]["aggregated_geo_threshold"]
-                ):
+                if ancestor_taxon_id != taxon_id and geo_threshold < aggregated_scores[
+                    ancestor_taxon_id
+                ]["aggregated_geo_threshold"]:
                     aggregated_scores[ancestor_taxon_id][
                         "aggregated_geo_threshold"
                     ] = geo_threshold
@@ -510,22 +434,16 @@ class InatInferrer:
 
         # calculate normalized scores so all values add to 1, to be used for thresholding
         sum_of_root_node_aggregated_vision_scores = all_node_scores.query(
-            "parent_taxon_id.isnull()"
-        )["aggregated_vision_score"].sum()
-        all_node_scores["normalized_aggregated_vision_score"] = (
-            all_node_scores["aggregated_vision_score"]
-            / sum_of_root_node_aggregated_vision_scores
-        )
+            "parent_taxon_id.isnull()")["aggregated_vision_score"].sum()
+        all_node_scores["normalized_aggregated_vision_score"] = all_node_scores[
+            "aggregated_vision_score"] / sum_of_root_node_aggregated_vision_scores
         sum_of_root_node_aggregated_combined_scores = all_node_scores.query(
-            "parent_taxon_id.isnull()"
-        )["aggregated_combined_score"].sum()
-        all_node_scores["normalized_aggregated_combined_score"] = (
-            all_node_scores["aggregated_combined_score"]
-            / sum_of_root_node_aggregated_combined_scores
-        )
+            "parent_taxon_id.isnull()")["aggregated_combined_score"].sum()
+        all_node_scores["normalized_aggregated_combined_score"] = all_node_scores[
+            "aggregated_combined_score"] / sum_of_root_node_aggregated_combined_scores
 
         if debug:
-            print("Aggregation Time: %0.2fms" % ((time.time() - start_time) * 1000.0))
+            print("Aggregation Time: %0.2fms" % ((time.time() - start_time) * 1000.))
             # InatInferrer.print_aggregated_scores(all_node_scores)
         return all_node_scores
 
@@ -547,19 +465,13 @@ class InatInferrer:
             return None
 
         h3_cell = h3.geo_to_h3(lat_float, lng_float, 4)
-        return (
-            float(
-                self.geo_elevation_model.eval_one_class_elevation_from_features(
-                    [self.geo_model_features[self.geo_elevation_cell_indices[h3_cell]]],
-                    int(taxon["leaf_class_id"]),
-                )[0][0]
-            )
-            / taxon["geo_threshold"]
-        )
+        return float(self.geo_elevation_model.eval_one_class_elevation_from_features(
+            [self.geo_model_features[self.geo_elevation_cell_indices[h3_cell]]],
+            int(taxon["leaf_class_id"])
+        )[0][0]) / taxon["geo_threshold"]
 
-    def h3_04_geo_results_for_taxon(
-        self, taxon_id, bounds=[], thresholded=False, raw_results=False
-    ):
+    def h3_04_geo_results_for_taxon(self, taxon_id, bounds=[],
+                                    thresholded=False, raw_results=False):
         if (self.geo_elevation_cells is None) or (self.geo_elevation_model is None):
             return
         try:
@@ -571,14 +483,11 @@ class InatInferrer:
             return
 
         geo_scores = self.geo_elevation_model.eval_one_class_elevation_from_features(
-            self.geo_model_features, int(taxon["leaf_class_id"])
-        )
+            self.geo_model_features, int(taxon["leaf_class_id"]))
         geo_score_cells = self.geo_elevation_cells.copy()
         geo_score_cells["geo_score"] = tf.squeeze(geo_scores).numpy()
         if thresholded:
-            geo_score_cells = geo_score_cells.query(
-                f'geo_score >= {taxon["geo_threshold"]}'
-            )
+            geo_score_cells = geo_score_cells.query(f'geo_score >= {taxon["geo_threshold"]}')
         else:
             # return scores more than 10% of the taxon threshold, or more than 0.0001, whichever
             # is smaller. This reduces data needed to be redendered client-side for the Data Layer
@@ -589,48 +498,36 @@ class InatInferrer:
         if bounds:
             min = geo_score_cells["geo_score"].min()
             max = geo_score_cells["geo_score"].max()
-            geo_score_cells = InatInferrer.filter_geo_dataframe_by_bounds(
-                geo_score_cells, bounds
-            )
+            geo_score_cells = InatInferrer.filter_geo_dataframe_by_bounds(geo_score_cells, bounds)
             if min == max:
                 # all scores are the same, so no transform is needed and all cells get the max value
                 geo_score_cells["geo_score"] = 1
             else:
                 # perform a log transform based on the min/max score for the unbounded set
-                geo_score_cells["geo_score"] = (
-                    np.log10(geo_score_cells["geo_score"]) - math.log10(min)
-                ) / (math.log10(max) - math.log10(min))
+                geo_score_cells["geo_score"] = \
+                    (np.log10(geo_score_cells["geo_score"]) - math.log10(min)) / \
+                    (math.log10(max) - math.log10(min))
 
         if raw_results:
             return geo_score_cells
-        return dict(
-            zip(geo_score_cells.index.astype(str), geo_score_cells["geo_score"])
-        )
+        return dict(zip(geo_score_cells.index.astype(str), geo_score_cells["geo_score"]))
 
     def h3_04_taxon_range(self, taxon_id, bounds=[]):
-        taxon_range_path = os.path.join(
-            self.config["taxon_ranges_path"], f"{taxon_id}.csv"
-        )
+        taxon_range_path = os.path.join(self.config["taxon_ranges_path"], f"{taxon_id}.csv")
         if not os.path.exists(taxon_range_path):
             return None
-        taxon_range_df = (
-            pd.read_csv(taxon_range_path, names=["h3_04"], header=None)
-            .sort_values("h3_04")
-            .set_index("h3_04")
-            .sort_index()
-        )
+        taxon_range_df = pd.read_csv(taxon_range_path, names=["h3_04"], header=None). \
+            sort_values("h3_04").set_index("h3_04").sort_index()
         taxon_range_df = InatInferrer.add_lat_lng_to_h3_geo_dataframe(taxon_range_df)
         if bounds:
-            taxon_range_df = InatInferrer.filter_geo_dataframe_by_bounds(
-                taxon_range_df, bounds
-            )
+            taxon_range_df = InatInferrer.filter_geo_dataframe_by_bounds(taxon_range_df, bounds)
         taxon_range_df["value"] = 1
         return dict(zip(taxon_range_df.index.astype(str), taxon_range_df["value"]))
 
     def h3_04_taxon_range_comparison(self, taxon_id, bounds=[]):
-        geomodel_results = (
-            self.h3_04_geo_results_for_taxon(taxon_id, bounds, thresholded=True) or {}
-        )
+        geomodel_results = self.h3_04_geo_results_for_taxon(
+            taxon_id, bounds, thresholded=True
+        ) or {}
         taxon_range_results = self.h3_04_taxon_range(taxon_id, bounds) or {}
         combined_results = {}
         for cell_key in geomodel_results:
@@ -645,8 +542,7 @@ class InatInferrer:
 
     def h3_04_bounds(self, taxon_id):
         geomodel_results = self.h3_04_geo_results_for_taxon(
-            taxon_id, bounds=None, thresholded=True, raw_results=True
-        )
+            taxon_id, bounds=None, thresholded=True, raw_results=True)
         if geomodel_results is None:
             return
         swlat = geomodel_results["lat"].min()
@@ -660,15 +556,16 @@ class InatInferrer:
         if swlng == nelng:
             swlng -= 0.3
             nelng += 0.3
-        return {"swlat": swlat, "swlng": swlng, "nelat": nelat, "nelng": nelng}
+        return {
+            "swlat": swlat,
+            "swlng": swlng,
+            "nelat": nelat,
+            "nelng": nelng
+        }
 
     def common_ancestor_from_leaf_scores(
-        self,
-        leaf_scores,
-        debug=False,
-        score_to_use="combined_score",
-        disallow_humans=False,
-        common_ancestor_rank_type=None,
+        self, leaf_scores, debug=False, score_to_use="combined_score", disallow_humans=False,
+        common_ancestor_rank_type=None
     ):
         if leaf_scores.empty:
             return None
@@ -677,29 +574,22 @@ class InatInferrer:
             debug=debug,
             score_ratio_cutoff=InatInferrer.COMMON_ANCESTOR_CUTOFF_RATIO,
             max_leaf_scores_to_consider=InatInferrer.COMMON_ANCESTOR_WINDOW,
-            column_for_cutoff=score_to_use,
+            column_for_cutoff=score_to_use
         )
         return self.common_ancestor_from_aggregated_scores(
             aggregated_scores,
             debug=debug,
             score_to_use=score_to_use,
             disallow_humans=disallow_humans,
-            common_ancestor_rank_type=common_ancestor_rank_type,
+            common_ancestor_rank_type=common_ancestor_rank_type
         )
 
     def common_ancestor_from_aggregated_scores(
-        self,
-        aggregated_scores,
-        debug=False,
-        score_to_use="combined_score",
-        disallow_humans=False,
-        common_ancestor_rank_type=None,
+        self, aggregated_scores, debug=False, score_to_use="combined_score", disallow_humans=False,
+        common_ancestor_rank_type=None
     ):
-        aggregated_score_to_use = (
-            "normalized_aggregated_vision_score"
-            if score_to_use == "vision_score"
-            else "normalized_aggregated_combined_score"
-        )
+        aggregated_score_to_use = "normalized_aggregated_vision_score" if \
+            score_to_use == "vision_score" else "normalized_aggregated_combined_score"
         common_ancestor_query = f"{aggregated_score_to_use} > 0.78 and rank_level >= 20"
         if common_ancestor_rank_type == "major":
             common_ancestor_query += " and rank_level % 10 == 0"
@@ -707,28 +597,20 @@ class InatInferrer:
             common_ancestor_query += " and rank_level <= 33"
         # if using combined scores to aggregate, and there are taxa expected nearby,
         # then add a query filter to only look at nearby taxa as common ancestor candidates
-        if (
-            aggregated_score_to_use == "normalized_aggregated_combined_score"
-            and not aggregated_scores.query(
-                "aggregated_geo_score >= aggregated_geo_threshold"
-            ).empty
-        ):
-            common_ancestor_query += (
-                " and aggregated_geo_score >= aggregated_geo_threshold"
-            )
+        if aggregated_score_to_use == "normalized_aggregated_combined_score" and not \
+           aggregated_scores.query("aggregated_geo_score >= aggregated_geo_threshold").empty:
+            common_ancestor_query += " and aggregated_geo_score >= aggregated_geo_threshold"
         common_ancestor_candidates = aggregated_scores.query(
             common_ancestor_query
-        ).sort_values(by=["rank_level"])
+        ).sort_values(
+            by=["rank_level"]
+        )
         if common_ancestor_candidates.empty:
             return None
 
         common_ancestor = common_ancestor_candidates.iloc[0]
-        if (
-            disallow_humans
-            and self.taxonomy.human_taxon is not None
-            and common_ancestor["taxon_id"]
-            == self.taxonomy.human_taxon["parent_taxon_id"]
-        ):
+        if disallow_humans and self.taxonomy.human_taxon is not None and \
+                common_ancestor["taxon_id"] == self.taxonomy.human_taxon["parent_taxon_id"]:
             return None
 
         return common_ancestor
@@ -738,11 +620,10 @@ class InatInferrer:
             return leaf_scores
 
         top_results = leaf_scores.sort_values(
-            "combined_score", ascending=False
+            "combined_score",
+            ascending=False
         ).reset_index(drop=True)
-        human_results = top_results.query(
-            f"taxon_id == {self.taxonomy.human_taxon['taxon_id']}"
-        )
+        human_results = top_results.query(f"taxon_id == {self.taxonomy.human_taxon['taxon_id']}")
         # there is only 1 result, or humans aren't in the top results
         if human_results.empty or top_results.index.size == 1:
             return leaf_scores
@@ -751,10 +632,8 @@ class InatInferrer:
         human_result_index = human_results.index[0]
         # if humans is first and has a substantially higher score than the next, return only humans
         if human_result_index == 0:
-            human_score_margin = (
-                top_results.iloc[0]["combined_score"]
-                / top_results.iloc[1]["combined_score"]
-            )
+            human_score_margin = top_results.iloc[0]["combined_score"] / \
+                top_results.iloc[1]["combined_score"]
             if human_score_margin > 1.5:
                 return top_results.head(1)
 
@@ -765,12 +644,8 @@ class InatInferrer:
         response = {}
         async with aiohttp.ClientSession() as session:
             queue = asyncio.Queue()
-            workers = [
-                asyncio.create_task(
-                    self.embeddings_worker_task(queue, response, session)
-                )
-                for _ in range(5)
-            ]
+            workers = [asyncio.create_task(self.embeddings_worker_task(queue, response, session))
+                       for _ in range(5)]
             for photo in photos:
                 queue.put_nowait(photo)
             await queue.join()
@@ -805,7 +680,7 @@ class InatInferrer:
         image = InatInferrer.prepare_image_for_inference(image_path)
         signature = self.vision_inferrer.process_image(image)["features"]
         if debug:
-            print("Signature Time: %0.2fms" % ((time.time() - start_time) * 1000.0))
+            print("Signature Time: %0.2fms" % ((time.time() - start_time) * 1000.))
         if signature is None:
             return
         return signature.numpy().tolist()
@@ -853,7 +728,7 @@ class InatInferrer:
             image,
             [new_height, new_width],
             method=tf.image.ResizeMethod.AREA,
-            preserve_aspect_ratio=True,
+            preserve_aspect_ratio=True
         )
         # determine the upper-left corner that needs to be used to grab the square crop
         offset_height = math.floor((new_height - eventual_size) / 2)
@@ -897,11 +772,9 @@ class InatInferrer:
 
         # query for cells wtihin the buffered bounds, and potentially
         # on the other side of the antimeridian
-        query = (
-            f"lat >= {bounds[0] - buffer} and lat <= {bounds[2] + buffer} and "
-            + f" ((lng >= {bounds[1] - buffer} and lng <= {bounds[3] + buffer})"
-            + f" {antimedirian_condition})"
-        )
+        query = f"lat >= {bounds[0] - buffer} and lat <= {bounds[2] + buffer} and " + \
+            f" ((lng >= {bounds[1] - buffer} and lng <= {bounds[3] + buffer})" + \
+            f" {antimedirian_condition})"
         return geo_df.query(query)
 
     @staticmethod
@@ -910,17 +783,14 @@ class InatInferrer:
             "normalized_aggregated_combined_score > 0.005"
         )
         print("\nTree of aggregated results:")
-        ModelTaxonomyDataframe.print(
-            thresholded_results,
-            display_taxon_lambda=(
-                lambda row: f"{row.name}    ["
-                f"ID:{row.taxon_id}, "
-                f"V:{round(row.aggregated_vision_score, 4)}, "
-                f"NV:{round(row.normalized_aggregated_vision_score, 4)}, "
-                f"G:{round(row.aggregated_geo_score, 4)}, "
-                f"GT:{round(row.aggregated_geo_threshold, 4)}, "
-                f"C:{round(row.aggregated_combined_score, 4)}, "
-                f"NC:{round(row.normalized_aggregated_combined_score, 4)}]"
-            ),
-        )
+        ModelTaxonomyDataframe.print(thresholded_results, display_taxon_lambda=(
+            lambda row: f"{row.name}    ["
+                        f"ID:{row.taxon_id}, "
+                        f"V:{round(row.aggregated_vision_score, 4)}, "
+                        f"NV:{round(row.normalized_aggregated_vision_score, 4)}, "
+                        f"G:{round(row.aggregated_geo_score, 4)}, "
+                        f"GT:{round(row.aggregated_geo_threshold, 4)}, "
+                        f"C:{round(row.aggregated_combined_score, 4)}, "
+                        f"NC:{round(row.normalized_aggregated_combined_score, 4)}]"
+        ))
         print("")
