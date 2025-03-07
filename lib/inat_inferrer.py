@@ -219,6 +219,9 @@ class InatInferrer:
             print("Geo Time: %0.2fms" % ((time.time() - start_time) * 1000.))
         return geo_scores
 
+    def taxon_exists(self, taxon_id):
+        return taxon_id in self.taxonomy.df.index
+
     def lookup_taxon(self, taxon_id):
         if taxon_id is None:
             return None
