@@ -22,8 +22,8 @@ def taxon(request, taxonomy):
 @pytest.fixture()
 def inatInferrer(request, mocker):
     config = {
-        "vision_model_path": "vision_model_path",
-        "tf_geo_elevation_model_path": "tf_geo_elevation_model_path",
+        "vision_model_path": "vision_model_path.h5",
+        "tf_geo_elevation_model_path": "tf_geo_elevation_model_path.h5",
         "taxonomy_path":
             os.path.realpath(os.path.dirname(__file__) + "/fixtures/taxonomy.csv"),
         "elevation_h3_r4":

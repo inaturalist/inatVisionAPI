@@ -1,7 +1,7 @@
 import pytest
 import tensorflow as tf
 from lib.res_layer import ResLayer
-from lib.tf_gp_elev_model import TFGeoPriorModelElev
+from lib.geo_inferrer_tf import TFGeoPriorModelElev
 from unittest.mock import MagicMock
 import unittest.mock as mock
 

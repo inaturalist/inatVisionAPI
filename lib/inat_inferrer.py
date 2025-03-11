@@ -16,8 +16,8 @@ import aiofiles.os
 import asyncio
 
 from PIL import Image
-from lib.tf_gp_elev_model import TFGeoPriorModelElev
-from lib.vision_inferrer import VisionInferrer
+from lib.geo_inferrer_factory import GeoInferrerFactory
+from lib.vision_inferrer_factory import VisionInferrerFactory
 from lib.model_taxonomy_dataframe import ModelTaxonomyDataframe
 
 pd.options.mode.copy_on_write = True
@@ -140,7 +140,7 @@ class InatInferrer:
         self.taxonomy = synonym_taxonomy
 
     def setup_vision_model(self):
-        self.vision_inferrer = VisionInferrer(
+        self.vision_inferrer = VisionInferrerFactory.create(
             self.config["vision_model_path"]
         )
 
@@ -184,12 +184,17 @@ class InatInferrer:
         if self.geo_elevation_cells is None:
             return
 
-        self.geo_elevation_model = TFGeoPriorModelElev(self.config["tf_geo_elevation_model_path"])
-        self.geo_model_features = self.geo_elevation_model.features_for_one_class_elevation(
-            latitude=list(self.geo_elevation_cells.lat),
-            longitude=list(self.geo_elevation_cells.lng),
-            elevation=list(self.geo_elevation_cells.elevation)
+        self.geo_elevation_model = GeoInferrerFactory.create(
+            self.config["tf_geo_elevation_model_path"]
         )
+
+        if hasattr(self.geo_elevation_model, "features_for_one_class_elevation"):
+            self.geo_model_features = self.geo_elevation_model.features_for_one_class_elevation(
+                latitude=list(self.geo_elevation_cells.lat),
+                longitude=list(self.geo_elevation_cells.lng),
+                elevation=list(self.geo_elevation_cells.elevation)
+            )
+
 
     def vision_predict(self, image, debug=False):
         if debug:

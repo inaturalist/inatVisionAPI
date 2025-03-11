@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import auc
 from sklearn.metrics import precision_recall_curve
 from lib.model_taxonomy_dataframe import ModelTaxonomyDataframe
-from lib.tf_gp_elev_model import TFGeoPriorModelElev
+from lib.geo_inferrer_tf import TFGeoPriorModelElev
 
 
 def evaluate_p_r(thres, gdfb, tr_h3, world, plot):
