@@ -133,6 +133,8 @@ class InatVisionAPIResponses:
 
     @staticmethod
     def limit_leaf_scores_for_response(leaf_scores):
+        if leaf_scores.empty:
+            return leaf_scores
         top_combined_score = leaf_scores.sort_values(
             "combined_score",
             ascending=False
