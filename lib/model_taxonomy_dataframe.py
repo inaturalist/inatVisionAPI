@@ -18,7 +18,9 @@ class ModelTaxonomyDataframe:
                 "leaf_class_id": "Int64",
                 "iconic_class_id": "Int64",
                 "spatial_class_id": "Int64",
-                "name": pd.StringDtype()
+                "name": pd.StringDtype(),
+                "iconic_taxon_id": "Int64",
+                "rank": pd.StringDtype()
             }
         ).set_index("taxon_id", drop=False).sort_index()
         # left and right will be used to store nested set indices
@@ -116,3 +118,16 @@ class ModelTaxonomyDataframe:
                     display_taxon_lambda
                 )
         return linesToPrint
+
+    # an API request may contain a taxon_id parameter where the ID does not match any taxa
+    # known to the model. In that case, the value should not be ignored and treated as if
+    # there is no filter taxon as that would return all results. Rather we want some surrogate
+    # taxon that will allow all logic that references the filter taxon to work, but ultimately
+    # return no results as nothing will be a descendant. This method returns a dict where
+    # left and right are 0, and when used to query for descendants, none will be returned
+    @staticmethod
+    def undefined_filter_taxon():
+        return {
+            "left": 0,
+            "right": 0
+        }

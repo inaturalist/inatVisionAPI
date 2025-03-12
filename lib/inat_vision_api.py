@@ -10,6 +10,7 @@ from web_forms import ImageForm
 from inat_inferrer import InatInferrer
 from inat_vision_api_responses import InatVisionAPIResponses
 from logstasher import Logstasher
+from model_taxonomy_dataframe import ModelTaxonomyDataframe
 
 
 class InatVisionAPI:
@@ -134,20 +135,20 @@ class InatVisionAPI:
             common_ancestor_rank_type = form.common_ancestor_rank_type.data
             file_path = None
             image_uuid = None
-            iconic_taxon_id = None
+            filter_taxon_id = None
             if observation_id:
                 image_uuid = "downloaded-obs-" + observation_id
-                file_path, lat, lng, iconic_taxon_id = self.download_observation(
+                file_path, lat, lng, filter_taxon_id = self.download_observation(
                     observation_id, image_uuid)
             else:
                 image_uuid = str(uuid.uuid4())
                 file_path = self.process_upload(form.image.data, image_uuid)
                 if form.taxon_id.data and form.taxon_id.data.isdigit():
-                    iconic_taxon_id = int(form.taxon_id.data)
+                    filter_taxon_id = int(form.taxon_id.data)
             if file_path is None:
                 return render_template("home.html")
 
-            scores = self.score_image(form, file_path, lat, lng, iconic_taxon_id, geomodel,
+            scores = self.score_image(form, file_path, lat, lng, filter_taxon_id, geomodel,
                                       common_ancestor_rank_type)
             g.image_uuid = image_uuid
             g.image_size = os.path.getsize(file_path)
@@ -155,9 +156,14 @@ class InatVisionAPI:
         else:
             return render_template("home.html")
 
-    def score_image(self, form, file_path, lat, lng, iconic_taxon_id, geomodel,
+    def score_image(self, form, file_path, lat, lng, filter_taxon_id, geomodel,
                     common_ancestor_rank_type=None):
-        filter_taxon = self.inferrer.lookup_taxon(iconic_taxon_id)
+        filter_taxon = None
+        if filter_taxon_id is not None:
+            if self.inferrer.taxon_exists(filter_taxon_id):
+                filter_taxon = self.inferrer.lookup_taxon(filter_taxon_id)
+            else:
+                filter_taxon = ModelTaxonomyDataframe.undefined_filter_taxon()
         predictions_for_image = self.inferrer.predictions_for_image(
             file_path, lat, lng, filter_taxon, debug=self.debug
         )

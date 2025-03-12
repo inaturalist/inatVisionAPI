@@ -53,7 +53,7 @@ class TFGeoPriorModelElev:
 
     def eval_one_class_elevation_from_features(self, features, class_of_interest):
         # process just the one class
-        return tf.keras.activations.sigmoid(
+        return tf.math.sigmoid(
             tf.matmul(
                 tf.expand_dims(self.gpmodel.layers[5].weights[0][:, class_of_interest], axis=0),
                 features,
@@ -73,13 +73,6 @@ class TFGeoPriorModelElev:
         elevation[elevation > 0] = elevation[elevation > 0] / 6574.0
         elevation[elevation < 0] = elevation[elevation < 0] / 32768.0
         norm_elev = elevation
-
-        # if np.isscalar(grid_lon):
-        #     grid_lon = np.array([grid_lon])
-        # if np.isscalar(grid_lat):
-        #     grid_lat = np.array([grid_lat])
-        # if np.isscalar(norm_elev):
-        #     norm_elev = np.array([norm_elev])
 
         norm_loc = tf.stack([grid_lon, grid_lat], axis=1)
 
