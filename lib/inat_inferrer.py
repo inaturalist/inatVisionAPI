@@ -617,10 +617,11 @@ class InatInferrer:
         if self.taxonomy.human_taxon is None:
             return leaf_scores
 
+        # only look at the top 10 results
         top_results = leaf_scores.sort_values(
             "combined_score",
             ascending=False
-        ).reset_index(drop=True)
+        ).reset_index(drop=True).head(10)
         human_results = top_results.query(f"taxon_id == {self.taxonomy.human_taxon['taxon_id']}")
         # there is only 1 result, or humans aren't in the top results
         if human_results.empty or top_results.index.size == 1:
