@@ -24,7 +24,11 @@ class InatVisionAPIResponses:
                         embedding=None, debug=False):
         leaf_scores = InatVisionAPIResponses.limit_leaf_scores_for_response(leaf_scores)
         leaf_scores = InatVisionAPIResponses.update_leaf_scores_scaling(leaf_scores)
-        leaf_scores = inferrer.limit_leaf_scores_that_include_humans(leaf_scores)
+        post_human_exclusion_scores = inferrer.limit_leaf_scores_that_include_humans(leaf_scores)
+        human_exclusion_cleared_results = False
+        if not leaf_scores.empty and post_human_exclusion_scores.empty:
+            human_exclusion_cleared_results = True
+        leaf_scores = post_human_exclusion_scores
         results = InatVisionAPIResponses.array_response_columns(
             leaf_scores.sort_values(
                 "combined_score",
@@ -46,6 +50,7 @@ class InatVisionAPIResponses:
         response = {
             "common_ancestor": common_ancestor,
             "results": results,
+            "human_exclusion_cleared_results": human_exclusion_cleared_results
         }
         if embedding is not None:
             response["embedding"] = embedding.numpy().tolist()
