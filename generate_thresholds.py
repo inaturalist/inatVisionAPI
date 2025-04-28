@@ -151,11 +151,7 @@ def main(args):
         absences = presence_absence[
             (presence_absence["forground"] == 0) & (presence_absence["background"] > yield_cutoff)
         ]["predictions"]
-        filtered = presence_absence[presence_absence["forground"] > 0]
-        repeated_index = filtered.index.repeat(filtered["forground"].astype(int))
-        repeated_predictions = filtered["predictions"].repeat(filtered["forground"].astype(int)).astype("float32")
-        presences = pd.Series(repeated_predictions.values, index=repeated_index, name="predictions")
-
+        presences = presence_absence[(presence_absence["forground"] > 0)]["predictions"]
         df_x = pd.DataFrame({"predictions": presences, "test": 1})
         df_y = pd.DataFrame({"predictions": absences, "test": 0})
         for_thres = pd.concat([df_x, df_y], ignore_index=False)
