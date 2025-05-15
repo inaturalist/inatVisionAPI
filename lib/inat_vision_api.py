@@ -178,7 +178,8 @@ class InatVisionAPI:
             embedding = predictions_for_image["features"]
             return InatVisionAPIResponses.aggregated_object_response(
                 leaf_scores, aggregated_scores, self.inferrer,
-                embedding=embedding
+                embedding=embedding,
+                human_exclusion_strategy=form.human_exclusion.data
             )
 
         # legacy dict response
@@ -192,6 +193,7 @@ class InatVisionAPI:
                 self.inferrer,
                 common_ancestor_rank_type=common_ancestor_rank_type,
                 embedding=embedding,
+                human_exclusion_strategy=form.human_exclusion.data,
                 debug=self.debug
             )
 

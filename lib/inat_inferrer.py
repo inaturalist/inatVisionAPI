@@ -613,7 +613,10 @@ class InatInferrer:
 
         return common_ancestor
 
-    def limit_leaf_scores_that_include_humans(self, leaf_scores):
+    def limit_leaf_scores_that_include_humans(self, leaf_scores, strategy=None):
+        if strategy == "never_exclude":
+            return leaf_scores
+
         if self.taxonomy.human_taxon is None:
             return leaf_scores
 
@@ -635,6 +638,19 @@ class InatInferrer:
                 top_results.iloc[1]["combined_score"]
             if human_score_margin > 1.5:
                 return top_results.head(1)
+
+        # if requesting a more limited approach to human exclusion
+        if strategy == "limited" and self.taxonomy.mammals_taxon is not None:
+            mammals_results = top_results.query(
+                f"left > {self.taxonomy.mammals_taxon['left']} and "
+                f"right < {self.taxonomy.mammals_taxon['right']}"
+            )
+            # if there is only 1 Mammals taxon (human), return all non-human results
+            if mammals_results.index.size == 1:
+                non_human_results = top_results.query(
+                    f"taxon_id != {self.taxonomy.human_taxon['taxon_id']}"
+                )
+                return non_human_results
 
         # otherwise return no results
         return leaf_scores.head(0)

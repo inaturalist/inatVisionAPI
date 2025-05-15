@@ -15,4 +15,5 @@ class ImageForm(FlaskForm):
     aggregated = StringField("aggregated")
     return_embedding = StringField("return_embedding")
     common_ancestor_rank_type = StringField("common_ancestor_rank_type")
+    human_exclusion = StringField("human_exclusion")
     format = StringField("format")
