@@ -7,6 +7,7 @@ class ModelTaxonomyDataframe:
     def __init__(self, path, thresholds_path):
         self.load_mapping(path, thresholds_path)
         self.set_human_taxon()
+        self.set_mammals_taxon()
 
     def load_mapping(self, path, thresholds_path):
         self.df = pd.read_csv(
@@ -77,6 +78,20 @@ class ModelTaxonomyDataframe:
             return
 
         self.human_taxon = human_rows.iloc[0]
+
+    def set_mammals_taxon(self):
+        self.mammals_taxon = None
+        if self.human_taxon is None:
+            return
+
+        mammals_rows = self.df.query(
+            f"name == 'Mammalia' and left < {self.human_taxon['left']} and "
+            f"right > {self.human_taxon['right']}"
+        )
+        if mammals_rows.empty:
+            return
+
+        self.mammals_taxon = mammals_rows.iloc[0]
 
     @staticmethod
     def children(df, taxon_id):

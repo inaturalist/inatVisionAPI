@@ -21,10 +21,13 @@ class InatVisionAPIResponses:
 
     @staticmethod
     def object_response(leaf_scores, inferrer, common_ancestor_rank_type=None,
-                        embedding=None, debug=False):
+                        embedding=None, debug=False, human_exclusion_strategy=None):
         leaf_scores = InatVisionAPIResponses.limit_leaf_scores_for_response(leaf_scores)
         leaf_scores = InatVisionAPIResponses.update_leaf_scores_scaling(leaf_scores)
-        post_human_exclusion_scores = inferrer.limit_leaf_scores_that_include_humans(leaf_scores)
+
+        post_human_exclusion_scores = inferrer.limit_leaf_scores_that_include_humans(
+            leaf_scores, strategy=human_exclusion_strategy
+        )
         human_exclusion_cleared_results = False
         if not leaf_scores.empty and post_human_exclusion_scores.empty:
             human_exclusion_cleared_results = True
@@ -85,7 +88,9 @@ class InatVisionAPIResponses:
         return "<pre>" + "<br/>".join(printable_tree) + "</pre>"
 
     @staticmethod
-    def aggregated_object_response(leaf_scores, aggregated_scores, inferrer, embedding=None):
+    def aggregated_object_response(
+        leaf_scores, aggregated_scores, inferrer, embedding=None, human_exclusion_strategy=None
+    ):
         top_leaf_combined_score = aggregated_scores.query(
             "leaf_class_id.notnull()"
         ).sort_values(
@@ -100,7 +105,10 @@ class InatVisionAPIResponses:
             "normalized_aggregated_combined_score",
             ascending=False
         ).head(100)
-        top_100_leaves = inferrer.limit_leaf_scores_that_include_humans(top_100_leaves)
+
+        top_100_leaves = inferrer.limit_leaf_scores_that_include_humans(
+            top_100_leaves, strategy=human_exclusion_strategy
+        )
 
         aggregated_scores = InatVisionAPIResponses.update_aggregated_scores_scaling(
             aggregated_scores
