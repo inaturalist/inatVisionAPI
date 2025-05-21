@@ -19,8 +19,6 @@ if "APP_SECRET" in os.environ:
             "synonyms_taxonomy_path": os.environ["SYNONYMS_TAXONOMY_PATH"]
         }]
     }
-    if "GEO_MIN" in os.environ:
-        CONFIG["models"][0]["geo_min"] = os.environ["GEO_MIN"]
 else:
     CONFIG = yaml.safe_load(open("config.yml"))
 

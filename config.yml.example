@@ -7,4 +7,3 @@ models:
     elevation_h3_r4: "models/.../elevation_r4_5m.csv"
     tf_elev_thresholds: "models/.../thresholds.csv"
     taxon_ranges_path: "models/.../taxon_ranges"
-    geo_min: 0.005
