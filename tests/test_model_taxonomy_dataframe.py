@@ -41,15 +41,15 @@ class TestModelTaxonomyDataframe:
     def test_print(self, capsys, taxonomy):
         ModelTaxonomyDataframe.print(taxonomy.df)
         captured = capsys.readouterr()
-        assert "├──Animalia :: 0:33" in captured.out
-        assert "│   └──Chordata :: 1:32" in captured.out
+        assert "├──Animalia :: 0:41" in captured.out
+        assert "│   └──Chordata :: 1:40" in captured.out
 
     def test_print_with_aggregated_combined_score(self, capsys, taxonomy):
         taxonomy.df["aggregated_combined_score"] = 1
         ModelTaxonomyDataframe.print(taxonomy.df)
         captured = capsys.readouterr()
-        assert "├──Animalia :: 0:33" in captured.out
-        assert "│   └──Chordata :: 1:32" in captured.out
+        assert "├──Animalia :: 0:41" in captured.out
+        assert "│   └──Chordata :: 1:40" in captured.out
 
     def test_print_with_lambda(self, capsys, taxonomy):
         ModelTaxonomyDataframe.print(taxonomy.df, display_taxon_lambda=(

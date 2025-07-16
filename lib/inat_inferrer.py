@@ -640,7 +640,7 @@ class InatInferrer:
                 return top_results.head(1)
 
         # if requesting a more limited approach to human exclusion
-        if strategy == "limited" and self.taxonomy.mammals_taxon is not None:
+        if self.taxonomy.mammals_taxon is not None:
             mammals_results = top_results.query(
                 f"left > {self.taxonomy.mammals_taxon['left']} and "
                 f"right < {self.taxonomy.mammals_taxon['right']}"

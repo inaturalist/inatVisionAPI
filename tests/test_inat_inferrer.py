@@ -112,6 +112,8 @@ class TestHumanExclusion:
         for n in range(20):
             results.append({
                 "taxon_id": n,
+                "left": 0,
+                "right": 0,
                 "combined_score": 1.0 - (n * 0.01)
             })
         results = pd.DataFrame(results)
@@ -120,46 +122,98 @@ class TestHumanExclusion:
     def test_results_are_unchanged_if_they_dont_include_humans_in_top_10(self, inatInferrer):
         assert inatInferrer.taxonomy.human_taxon["name"] == "Homo sapiens"
         assert inatInferrer.taxonomy.human_taxon["taxon_id"] == 43584
+
         results = []
         for n in range(20):
             results.append({
                 "taxon_id": n,
+                "left": 0,
+                "right": 0,
                 "combined_score": 1.0 - (n * 0.01)
             })
         results.append({
             "taxon_id": inatInferrer.taxonomy.human_taxon["taxon_id"],
+            "left": inatInferrer.taxonomy.human_taxon["left"],
+            "right": inatInferrer.taxonomy.human_taxon["right"],
             "combined_score": 0.001
         })
         results = pd.DataFrame(results)
         assert results.equals(inatInferrer.limit_leaf_scores_that_include_humans(results))
 
     def test_results_are_empty_if_humans_are_in_top_10_but_not_first(self, inatInferrer):
+        # ... and the results contain another mammal
         assert inatInferrer.taxonomy.human_taxon["name"] == "Homo sapiens"
         assert inatInferrer.taxonomy.human_taxon["taxon_id"] == 43584
+        mouse_taxon = inatInferrer.taxonomy.df.query("name == 'Mus musculus'").iloc[0]
+
         results = []
         for n in range(5):
             results.append({
                 "taxon_id": n,
+                "left": 0,
+                "right": 0,
                 "combined_score": 1.0 - (n * 0.01)
             })
         results.append({
+            "taxon_id": mouse_taxon["taxon_id"],
+            "left": mouse_taxon["left"],
+            "right": mouse_taxon["right"],
+            "combined_score": 0.002
+        })
+        results.append({
             "taxon_id": inatInferrer.taxonomy.human_taxon["taxon_id"],
+            "left": inatInferrer.taxonomy.human_taxon["left"],
+            "right": inatInferrer.taxonomy.human_taxon["right"],
             "combined_score": 0.001
         })
         results = pd.DataFrame(results)
         assert inatInferrer.limit_leaf_scores_that_include_humans(results).empty
 
-    def test_results_are_empty_if_humans_are_first_by_small_margin(self, inatInferrer):
+    def test_humans_excluded_if_humans_are_in_top_10_but_not_first(self, inatInferrer):
         assert inatInferrer.taxonomy.human_taxon["name"] == "Homo sapiens"
         assert inatInferrer.taxonomy.human_taxon["taxon_id"] == 43584
+
+        results = []
+        for n in range(5):
+            results.append({
+                "taxon_id": n,
+                "left": 0,
+                "right": 0,
+                "combined_score": 1.0 - (n * 0.01)
+            })
+        results.append({
+            "taxon_id": inatInferrer.taxonomy.human_taxon["taxon_id"],
+            "left": inatInferrer.taxonomy.human_taxon["left"],
+            "right": inatInferrer.taxonomy.human_taxon["right"],
+            "combined_score": 0.001
+        })
+        results = pd.DataFrame(results)
+        assert results.head(5).equals(inatInferrer.limit_leaf_scores_that_include_humans(results))
+
+    def test_results_are_empty_if_humans_are_first_by_small_margin(self, inatInferrer):
+        # ... and the results contain another mammal
+        assert inatInferrer.taxonomy.human_taxon["name"] == "Homo sapiens"
+        assert inatInferrer.taxonomy.human_taxon["taxon_id"] == 43584
+        mouse_taxon = inatInferrer.taxonomy.df.query("name == 'Mus musculus'").iloc[0]
+
         results = []
         results.append({
             "taxon_id": inatInferrer.taxonomy.human_taxon["taxon_id"],
+            "left": inatInferrer.taxonomy.human_taxon["left"],
+            "right": inatInferrer.taxonomy.human_taxon["right"],
             "combined_score": 1.0
+        })
+        results.append({
+            "taxon_id": mouse_taxon["taxon_id"],
+            "left": mouse_taxon["left"],
+            "right": mouse_taxon["right"],
+            "combined_score": 0.95
         })
         for n in range(5):
             results.append({
                 "taxon_id": n,
+                "left": 0,
+                "right": 0,
                 "combined_score": 0.9 - (n * 0.01)
             })
         results = pd.DataFrame(results)
@@ -171,12 +225,16 @@ class TestHumanExclusion:
         results = []
         human_result = {
             "taxon_id": inatInferrer.taxonomy.human_taxon["taxon_id"],
+            "left": inatInferrer.taxonomy.human_taxon["left"],
+            "right": inatInferrer.taxonomy.human_taxon["right"],
             "combined_score": 1.0
         }
         results.append(human_result)
         for n in range(5):
             results.append({
                 "taxon_id": n,
+                "left": 0,
+                "right": 0,
                 "combined_score": 0.5 - (n * 0.01)
             })
         results = pd.DataFrame(results)

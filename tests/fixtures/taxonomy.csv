@@ -24,3 +24,7 @@ parent_taxon_id,taxon_id,rank_level,leaf_class_id,iconic_class_id,spatial_class_
 43367,43575,30,,,23,Hominidae
 43575,43583,20,,,24,Homo
 43583,43584,10,,,25,Homo sapiens
+40151,43698,40,,,26,Rodentia
+43698,44185,30,,,27,Muridae
+44185,44678,20,,,28,Mus
+44678,44705,10,,,29,Mus musculus
