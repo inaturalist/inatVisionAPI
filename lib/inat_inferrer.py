@@ -17,6 +17,7 @@ import asyncio
 
 from PIL import Image
 from lib.tf_gp_elev_model import TFGeoPriorModelElev
+from lib.coord_encoder import CoordEncoder
 from lib.vision_inferrer import VisionInferrer
 from lib.model_taxonomy_dataframe import ModelTaxonomyDataframe
 
@@ -36,6 +37,9 @@ class InatInferrer:
         self.setup_synonyms()
         self.setup_vision_model()
         self.setup_elevation_dataframe()
+        if config["use_coord_encoder"]:
+            self.setup_coord_encoder()
+
         self.setup_geo_model()
         self.upload_folder = "static/"
 
@@ -175,6 +179,19 @@ class InatInferrer:
             elev_dfh3 = im_df.h3.geo_to_h3(resolution)
             elev_dfh3 = elev_dfh3.drop(columns=["lng", "lat"]).groupby(f"h3_0{resolution}").mean()
 
+    def setup_coord_encoder(self):
+        raster_file = self.config["coord_encoder"]["env_raster"]
+        if raster_file is not None:
+            raster = np.load(raster_file)
+        else:
+            raster = None
+
+        self.coord_encoder = CoordEncoder(
+            encoding_strategy=self.config["coord_encoder"]["encoding_strategy"],
+            raster=raster
+        )
+
+
     def setup_geo_model(self):
         self.geo_elevation_model = None
         self.geo_model_features = None
@@ -208,13 +225,23 @@ class InatInferrer:
         if self.geo_elevation_model is None:
             return None
 
-        # lookup the H3 cell this lat lng occurs in
-        h3_cell = h3.geo_to_h3(float(lat), float(lng), 4)
-        h3_cell_centroid = h3.h3_to_geo(h3_cell)
-        # get the average elevation of the above H3 cell
-        elevation = self.geo_elevation_cells.loc[h3_cell].elevation
-        geo_scores = self.geo_elevation_model.predict(
-            h3_cell_centroid[0], h3_cell_centroid[1], float(elevation))
+        if self.config["use_coord_encoder"]:
+            stacked_loc = np.array([[lng, lat]])
+            encoded_loc = self.coord_encoder.encode(stacked_loc)
+            geo_scores = self.geo_elevation_model.predict_encoded(encoded_loc)
+        else: 
+            # lookup the H3 cell this lat lng occurs in
+            h3_cell = h3.geo_to_h3(float(lat), float(lng), 4)
+            h3_cell_centroid = h3.h3_to_geo(h3_cell)
+            # get the average elevation of the above H3 cell
+            elevation = self.geo_elevation_cells.loc[h3_cell].elevation
+            geo_scores = self.geo_elevation_model.predict(
+                h3_cell_centroid[0], 
+                h3_cell_centroid[1], 
+                float(elevation)
+            )
+        
+            
         if debug:
             print("Geo Time: %0.2fms" % ((time.time() - start_time) * 1000.))
         return geo_scores
