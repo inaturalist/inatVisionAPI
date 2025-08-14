@@ -162,6 +162,7 @@ class InatVisionAPIResponses:
         score_columns = [
             "normalized_combined_score",
             "geo_score",
+            "raster_geo_score",
             "normalized_vision_score",
             "geo_threshold"
         ]
@@ -186,6 +187,7 @@ class InatVisionAPIResponses:
             "aggregated_combined_score",
             "normalized_aggregated_combined_score",
             "aggregated_geo_score",
+            "aggregated_raster_geo_score",
             "aggregated_vision_score",
             "aggregated_geo_threshold"
         ]
@@ -199,6 +201,7 @@ class InatVisionAPIResponses:
         columns_to_return = [
             "normalized_combined_score",
             "geo_score",
+            "raster_geo_score",
             "taxon_id",
             "name",
             "normalized_vision_score",
@@ -236,6 +239,7 @@ class InatVisionAPIResponses:
             "aggregated_combined_score",
             "normalized_aggregated_combined_score",
             "aggregated_geo_score",
+            "aggregated_raster_geo_score",
             "taxon_id",
             "parent_taxon_id",
             "name",
@@ -252,6 +256,7 @@ class InatVisionAPIResponses:
             "aggregated_combined_score": "combined_score",
             "normalized_aggregated_combined_score": "normalized_combined_score",
             "aggregated_geo_score": "geo_score",
+            "aggregated_raster_geo_score": "raster_geo_score",
             "aggregated_vision_score": "vision_score",
             "aggregated_geo_threshold": "geo_threshold"
         }

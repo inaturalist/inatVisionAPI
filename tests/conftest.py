@@ -33,8 +33,7 @@ def inatInferrer(request, mocker):
         "taxon_ranges_path":
             os.path.realpath(os.path.dirname(__file__) + "/fixtures/taxon_ranges"),
         "synonyms_path":
-            os.path.realpath(os.path.dirname(__file__) + "/fixtures/synonyms.csv"),
-        "use_coord_encoder": False
+            os.path.realpath(os.path.dirname(__file__) + "/fixtures/synonyms.csv")
     }
     mocker.patch("tensorflow.keras.models.load_model", return_value=MagicMock())
     mocker.patch("tensorflow.keras.Model", return_value=MagicMock())

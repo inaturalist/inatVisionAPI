@@ -8,7 +8,6 @@ models:
     tf_elev_thresholds: "models/.../thresholds.csv"
     taxon_ranges_path: "models/.../taxon_ranges
     geo_min: 0.005
-    use_coord_encoder: False
   - name: "ModelGenerationName_coord_encoder"
     vision_model_path: "models/.../vision_model.h5"
     taxonomy_path: "models/.../taxonomy.csv"
@@ -17,9 +16,6 @@ models:
     tf_elev_thresholds: "models/.../thresholds.csv"
     taxon_ranges_path: "models/.../taxon_ranges
     geo_min: 0.005
-    use_coord_encoder: True
-    coord_encoder:
-        env_raster: "models/.../elev_scaled.npy"
-        encoding_strategy: "sinusoidal"
-        
+    coord_encoder_raster: "models/.../elev_scaled.npy"
+    use_raster_nearby: False
 

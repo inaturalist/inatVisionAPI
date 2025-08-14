@@ -192,6 +192,11 @@ class VisionTesting:
         ).agg(
             CARankLevel=("common_ancestor_rank_level", "mean"),
         ))
+        aggs.append(all_obs_scores_df.query("match_nearby == 1").groupby(
+            "run_label"
+        ).agg(
+            nearby=("label", "count"),
+        ))
         for agg in aggs:
             grouped_stats = grouped_stats.merge(
                 agg, how="left", left_on="run_label", right_on="run_label"
@@ -227,6 +232,9 @@ class VisionTesting:
         grouped_stats["precision"] = grouped_stats["precision"].round(4)
         grouped_stats["recall"] = grouped_stats["recall"].round(4)
         grouped_stats["f1"] = grouped_stats["f1"].round(4)
+        grouped_stats["nearby%"] = round(
+            (grouped_stats["nearby"] / grouped_stats["count"]) * 100, 2
+        )
         grouped_stats = grouped_stats.sort_index(ascending=False)
         print(grouped_stats[grouped_stats.columns.difference(["inferrer_name", "label", "method"])])
 
@@ -435,7 +443,13 @@ class VisionTesting:
         ) / sum_of_precision_and_recall
 
         summary["top_score"] = top_normalized_score
-        summary["matching_score"] = self.matching_score(observation, working_results, normalized_score_column)
+        summary["matching_score"] = self.matching_score(
+            observation, working_results, normalized_score_column
+        )
+        matching_geo_score = self.matching_score(observation, working_results, "geo_score")
+        matching_geo_threshold = self.matching_score(observation, working_results, "geo_threshold")
+        summary["match_nearby"] = 1 if matching_geo_threshold > 0 and \
+            matching_geo_score > matching_geo_threshold else 0
 
         return summary
 
