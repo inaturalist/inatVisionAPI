@@ -1,4 +1,3 @@
-import datetime
 import time
 import os
 import urllib
@@ -128,8 +127,6 @@ class InatVisionAPI:
         else:
             geomodel = form.geomodel.data
         if request.method == "POST" or observation_id:
-            request_start_datetime = datetime.datetime.now()
-            request_start_time = time.time()
             lat = form.lat.data
             lng = form.lng.data
             common_ancestor_rank_type = form.common_ancestor_rank_type.data

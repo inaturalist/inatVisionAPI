@@ -6,4 +6,16 @@ models:
     tf_geo_elevation_model_path: "models/.../tf_gpmodel.h5"
     elevation_h3_r4: "models/.../elevation_r4_5m.csv"
     tf_elev_thresholds: "models/.../thresholds.csv"
-    taxon_ranges_path: "models/.../taxon_ranges"
+    taxon_ranges_path: "models/.../taxon_ranges
+    geo_min: 0.005
+  - name: "ModelGenerationName_coord_encoder"
+    vision_model_path: "models/.../vision_model.h5"
+    taxonomy_path: "models/.../taxonomy.csv"
+    tf_geo_elevation_model_path: "models/.../tf_gpmodel.h5"
+    elevation_h3_r4: "models/.../elevation_r4_5m.csv"
+    tf_elev_thresholds: "models/.../thresholds.csv"
+    taxon_ranges_path: "models/.../taxon_ranges
+    geo_min: 0.005
+    coord_encoder_raster: "models/.../elev_scaled.npy"
+    use_raster_nearby: False
+

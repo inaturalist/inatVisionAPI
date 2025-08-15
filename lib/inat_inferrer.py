@@ -17,6 +17,7 @@ import asyncio
 
 from PIL import Image
 from lib.tf_gp_elev_model import TFGeoPriorModelElev
+from lib.coord_encoder import CoordEncoder
 from lib.vision_inferrer import VisionInferrer
 from lib.model_taxonomy_dataframe import ModelTaxonomyDataframe
 
@@ -36,6 +37,7 @@ class InatInferrer:
         self.setup_synonyms()
         self.setup_vision_model()
         self.setup_elevation_dataframe()
+        self.setup_coord_encoder()
         self.setup_geo_model()
         self.upload_folder = "static/"
 
@@ -175,6 +177,15 @@ class InatInferrer:
             elev_dfh3 = im_df.h3.geo_to_h3(resolution)
             elev_dfh3 = elev_dfh3.drop(columns=["lng", "lat"]).groupby(f"h3_0{resolution}").mean()
 
+    def setup_coord_encoder(self):
+        self.coord_encoder = None
+        if "coord_encoder_raster" not in self.config:
+            return
+        raster = np.load(self.config["coord_encoder_raster"])
+        self.coord_encoder = CoordEncoder(
+            raster=raster
+        )
+
     def setup_geo_model(self):
         self.geo_elevation_model = None
         self.geo_model_features = None
@@ -199,7 +210,7 @@ class InatInferrer:
             print("Vision Time: %0.2fms" % ((time.time() - start_time) * 1000.))
         return results
 
-    def geo_model_predict(self, lat, lng, debug=False):
+    def geo_model_predict(self, lat, lng, encoder="h3", debug=False):
         if debug:
             start_time = time.time()
         if lat is None or lat == "" or lng is None or lng == "":
@@ -208,13 +219,23 @@ class InatInferrer:
         if self.geo_elevation_model is None:
             return None
 
-        # lookup the H3 cell this lat lng occurs in
-        h3_cell = h3.geo_to_h3(float(lat), float(lng), 4)
-        h3_cell_centroid = h3.h3_to_geo(h3_cell)
-        # get the average elevation of the above H3 cell
-        elevation = self.geo_elevation_cells.loc[h3_cell].elevation
-        geo_scores = self.geo_elevation_model.predict(
-            h3_cell_centroid[0], h3_cell_centroid[1], float(elevation))
+        geo_scores = None
+        if encoder == "h3":
+            # lookup the H3 cell this lat lng occurs in
+            h3_cell = h3.geo_to_h3(float(lat), float(lng), 4)
+            h3_cell_centroid = h3.h3_to_geo(h3_cell)
+            # get the average elevation of the above H3 cell
+            elevation = self.geo_elevation_cells.loc[h3_cell].elevation
+            geo_scores = self.geo_elevation_model.predict(
+                h3_cell_centroid[0],
+                h3_cell_centroid[1],
+                float(elevation)
+            )
+        elif encoder == "raster" and self.coord_encoder is not None:
+            stacked_loc = np.array([[float(lng), float(lat)]])
+            encoded_loc = self.coord_encoder.encode(stacked_loc)
+            geo_scores = self.geo_elevation_model.predict_encoded(encoded_loc)
+
         if debug:
             print("Geo Time: %0.2fms" % ((time.time() - start_time) * 1000.))
         return geo_scores
@@ -238,9 +259,10 @@ class InatInferrer:
         image = InatInferrer.prepare_image_for_inference(file_path)
         vision_model_results = self.vision_predict(image, debug)
         raw_vision_scores = vision_model_results["predictions"]
-        raw_geo_scores = self.geo_model_predict(lat, lng, debug)
+        raw_h3_geo_scores = self.geo_model_predict(lat, lng, encoder="h3", debug=debug)
+        raw_raster_geo_scores = self.geo_model_predict(lat, lng, encoder="raster", debug=debug)
         combined_scores = self.combine_results(
-            raw_vision_scores, raw_geo_scores, filter_taxon, debug
+            raw_vision_scores, raw_h3_geo_scores, filter_taxon, raw_raster_geo_scores, debug
         )
         combined_scores = self.map_result_synonyms(combined_scores, debug)
         # for any taxon that doesn't have a geo threshold, set it to 1 which is the highest
@@ -253,7 +275,10 @@ class InatInferrer:
             "features": vision_model_results["features"]
         }
 
-    def combine_results(self, raw_vision_scores, raw_geo_scores, filter_taxon, debug=False):
+    def combine_results(
+        self, raw_vision_scores, raw_geo_scores, filter_taxon,
+        raw_raster_geo_scores=None, debug=False
+    ):
         if debug:
             start_time = time.time()
         no_geo_scores = (raw_geo_scores is None)
@@ -265,10 +290,17 @@ class InatInferrer:
         # add a column for vision scores
         leaf_scores["vision_score"] = raw_vision_scores
         # add a column for geo scores
-        leaf_scores["geo_score"] = 0 if no_geo_scores else raw_geo_scores
-        # set a lower limit for geo scores if there are any
-        leaf_scores["normalized_geo_score"] = 0 if no_geo_scores \
-            else leaf_scores["geo_score"].clip(InatInferrer.MINIMUM_GEO_SCORE, None)
+        InatInferrer.add_geo_score_column(leaf_scores, raw_geo_scores, "geo_score")
+        geo_column_for_scoring = "normalized_geo_score"
+        InatInferrer.add_geo_score_column(
+            leaf_scores, raw_raster_geo_scores, "raster_geo_score"
+        )
+        if raw_raster_geo_scores is not None:
+            # when raster geo scores are present, use them for calculating combined score
+            geo_column_for_scoring = "normalized_raster_geo_score"
+            if "use_raster_nearby" in self.config and self.config["use_raster_nearby"]:
+                leaf_scores["geo_score"] = leaf_scores["raster_geo_score"]
+                leaf_scores["normalized_geo_score"] = leaf_scores["normalized_raster_geo_score"]
 
         # if filtering by a taxon, restrict results to that taxon and its descendants
         if filter_taxon is not None:
@@ -292,7 +324,7 @@ class InatInferrer:
             # the combined score is simply the normalized vision score
             # multipliedby the normalized geo score
             leaf_scores["combined_score"] = leaf_scores["normalized_vision_score"] * \
-                leaf_scores["normalized_geo_score"]
+                leaf_scores[geo_column_for_scoring]
 
         sum_of_root_node_aggregated_combined_scores = leaf_scores["combined_score"].sum()
         if sum_of_root_node_aggregated_combined_scores > 0:
@@ -362,9 +394,14 @@ class InatInferrer:
 
         # copy columns from the already calculated leaf scores including scores
         # and class_id columns which will not be populated for synonyms in the taxonomy
-        all_node_scores = pd.merge(all_node_scores, leaf_scores[[
-            "taxon_id", "vision_score", "normalized_vision_score", "geo_score", "combined_score",
-            "normalized_geo_score", "leaf_class_id", "iconic_class_id", "spatial_class_id"]],
+        columns_to_copy = [
+            "taxon_id", "vision_score", "normalized_vision_score", "geo_score", "raster_geo_score",
+            "combined_score", "normalized_geo_score", "leaf_class_id", "iconic_class_id",
+            "spatial_class_id"
+        ]
+        all_node_scores = pd.merge(
+            all_node_scores,
+            leaf_scores[columns_to_copy],
             on="taxon_id",
             how="left",
             suffixes=["_x", None]
@@ -389,13 +426,14 @@ class InatInferrer:
 
         # loop through all results where the combined score is above the cutoff
         aggregated_scores = {}
-        for taxon_id, vision_score, geo_score, combined_score, geo_threshold in zip(
-            scores_to_aggregate["taxon_id"],
-            scores_to_aggregate["normalized_vision_score"],
-            scores_to_aggregate["geo_score"],
-            scores_to_aggregate["combined_score"],
-            scores_to_aggregate["geo_threshold"]
-        ):
+        for taxon_id, vision_score, geo_score, \
+            raster_geo_score, combined_score, geo_threshold in zip(
+                scores_to_aggregate["taxon_id"],
+                scores_to_aggregate["normalized_vision_score"],
+                scores_to_aggregate["geo_score"],
+                scores_to_aggregate["raster_geo_score"],
+                scores_to_aggregate["combined_score"],
+                scores_to_aggregate["geo_threshold"]):
             # loop through the pre-calculated ancestors of this result's taxon
             for ancestor_taxon_id in self.taxonomy.taxon_ancestors[taxon_id]:
                 # set default values for the ancestor the first time it is referenced
@@ -404,6 +442,7 @@ class InatInferrer:
                     aggregated_scores[ancestor_taxon_id]["aggregated_vision_score"] = 0
                     aggregated_scores[ancestor_taxon_id]["aggregated_combined_score"] = 0
                     aggregated_scores[ancestor_taxon_id]["aggregated_geo_score"] = 0
+                    aggregated_scores[ancestor_taxon_id]["aggregated_raster_geo_score"] = 0
                     aggregated_scores[ancestor_taxon_id][
                         "aggregated_geo_threshold"
                     ] = geo_threshold if (ancestor_taxon_id == taxon_id) else 1.0
@@ -413,7 +452,13 @@ class InatInferrer:
 
                 # aggregated geo score is the max of descendant geo scores
                 if geo_score > aggregated_scores[ancestor_taxon_id]["aggregated_geo_score"]:
-                    aggregated_scores[ancestor_taxon_id]["aggregated_geo_score"] = geo_score
+                    aggregated_scores[ancestor_taxon_id][
+                        "aggregated_geo_score"
+                    ] = geo_score
+                if geo_score > aggregated_scores[ancestor_taxon_id]["aggregated_raster_geo_score"]:
+                    aggregated_scores[ancestor_taxon_id][
+                        "aggregated_raster_geo_score"
+                    ] = raster_geo_score
 
                 # aggregated geo threshold is the min of descendant geo thresholds
                 if ancestor_taxon_id != taxon_id and geo_threshold < aggregated_scores[
@@ -722,6 +767,21 @@ class InatInferrer:
             rgb_im = im.convert("RGB")
             rgb_im.save(cache_path)
         return cache_path
+
+    @staticmethod
+    def add_geo_score_column(dataframe, raw_geo_scores, column_name="geo_score"):
+        no_geo_scores = (raw_geo_scores is None)
+        # add a column for geo scores
+        if column_name in dataframe.columns:
+            dataframe.drop(column_name, axis=1)
+        dataframe[column_name] = 0 if no_geo_scores else raw_geo_scores
+
+        # set a lower limit for geo scores if there are any
+        normalized_column_name = f"normalized_{column_name}"
+        if normalized_column_name in dataframe.columns:
+            dataframe.drop(normalized_column_name, axis=1)
+        dataframe[normalized_column_name] = 0 if no_geo_scores \
+            else dataframe[column_name].clip(InatInferrer.MINIMUM_GEO_SCORE, None)
 
     @staticmethod
     def prepare_image_for_inference(file_path):

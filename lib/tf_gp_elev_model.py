@@ -27,6 +27,11 @@ class TFGeoPriorModelElev:
             tf.expand_dims(encoded_loc[0], axis=0)
         ), training=False)[0]
 
+    def predict_encoded(self, encoded_loc):
+        return self.gpmodel(tf.convert_to_tensor(
+            tf.expand_dims(encoded_loc[0], axis=0)
+        ), training=False)[0]
+
     def features_for_one_class_elevation(self, latitude, longitude, elevation):
         """Evalutes the model for a single class and multiple locations
 
