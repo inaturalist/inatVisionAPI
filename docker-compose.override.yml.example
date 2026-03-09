@@ -1,0 +1,13 @@
+services:
+  inaturalist_vision_api:
+    environment:
+      APP_SECRET: somesecret
+      MODEL_NAME: Latest Model
+      VISION_MODEL_PATH: /home/inaturalist/vision/latest_model/vision.h5
+      TAXONOMY_PATH: /home/inaturalist/vision/latest_model/taxonomy.csv
+      TF_GEO_MODEL_PATH: /home/inaturalist/vision/latest_model/geo.h5
+      ELEVATION_H3_R4_PATH: /home/inaturalist/vision/latest_model/elevation_r4_5m.csv
+      GEO_THRESHOLDS_PATH: /home/inaturalist/vision/latest_model/thresholds.csv
+      TAXON_RANGES_PATH: /home/inaturalist/vision/latest_model/taxon_range_csvs
+      SYNONYMS_PATH: /home/inaturalist/vision/latest_model/synonyms.csv
+      SYNONYMS_TAXONOMY_PATH: /home/inaturalist/vision/latest_model/synonym_taxonomy.csv

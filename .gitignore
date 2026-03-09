@@ -102,3 +102,5 @@ config.yml
 env.list
 test-results*
 *.ipynb
+docker-compose.override.yml
+latest_model/**

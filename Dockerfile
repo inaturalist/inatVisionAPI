@@ -1,4 +1,4 @@
-FROM python:3.11.6 as base
+FROM python:3.11.6 AS base
 
 RUN apt-get update && apt-get install -y libgdal-dev uwsgi-plugin-python3
 
@@ -21,6 +21,7 @@ RUN UWSGI_EMBED_PLUGINS=stats_pusher_statsd pip install -r requirements.txt
 # Copy app and libs
 COPY --chown=inaturalist:inaturalist app.py /home/inaturalist/vision
 COPY --chown=inaturalist:inaturalist lib /home/inaturalist/vision/lib
+COPY --chown=inaturalist:inaturalist latest_model* /home/inaturalist/vision/latest_model
 
 # Create directories for the log and static content
 RUN mkdir /home/inaturalist/vision/log

@@ -1,0 +1,11 @@
+services:
+  inaturalist_vision_api:
+    container_name: inaturalist_vision_api
+    build:
+      target: development
+    ports:
+      - 6006:6006
+networks:
+  default:
+    external: true
+    name: inaturalist_default
