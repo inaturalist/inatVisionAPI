@@ -21,7 +21,6 @@ RUN UWSGI_EMBED_PLUGINS=stats_pusher_statsd pip install -r requirements.txt
 # Copy app and libs
 COPY --chown=inaturalist:inaturalist app.py /home/inaturalist/vision
 COPY --chown=inaturalist:inaturalist lib /home/inaturalist/vision/lib
-COPY --chown=inaturalist:inaturalist latest_model* /home/inaturalist/vision/latest_model
 
 # Create directories for the log and static content
 RUN mkdir /home/inaturalist/vision/log
