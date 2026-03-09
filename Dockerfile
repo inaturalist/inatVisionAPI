@@ -1,4 +1,4 @@
-FROM python:3.11.6 as base
+FROM python:3.11.6 AS base
 
 RUN apt-get update && apt-get install -y libgdal-dev uwsgi-plugin-python3
 

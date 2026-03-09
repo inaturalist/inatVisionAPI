@@ -7,6 +7,7 @@ from inat_vision_api import InatVisionAPI  # noqa: E402
 if "APP_SECRET" in os.environ:
     CONFIG = {
         "app_secret": os.environ["APP_SECRET"],
+        "debug": os.environ["DEBUG"],
         "models": [{
             "name": os.environ["MODEL_NAME"],
             "vision_model_path": os.environ["VISION_MODEL_PATH"],

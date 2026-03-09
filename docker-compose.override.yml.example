@@ -1,0 +1,4 @@
+services:
+  inaturalist_vision_api:
+    environment:
+      APP_SECRET: somesecret
