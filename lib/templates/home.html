@@ -56,6 +56,23 @@
     </select>
     <br/>
     <br/>
+    <select name="annotations">
+      <option value="false">No annotations</option>
+      <option value="true">Predict annotations (requires format=Object)</option>
+    </select>
+    <br/>
+    <select name="annotation_masking">
+      <option value="true">Mask non-applicable attributes</option>
+      <option value="false">Show all attributes unmasked</option>
+    </select>
+    <br/>
+    Annotation taxon ID (blank = observation taxon, or top vision result):
+    <input type="text" name="annotation_taxon_id" />
+    <br/>
+    Its ancestry, optional (accepts 48460/47126/... or a comma-separated ancestor_ids list):
+    <input type="text" name="annotation_taxon_ancestry" size="60" />
+    <br/>
+    <br/>
     <button type="submit">Submit</button>
   </form>
 </body>

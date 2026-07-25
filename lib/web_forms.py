@@ -17,3 +17,7 @@ class ImageForm(FlaskForm):
     common_ancestor_rank_type = StringField("common_ancestor_rank_type")
     human_exclusion = StringField("human_exclusion")
     format = StringField("format")
+    annotations = StringField("annotations")
+    annotation_taxon_id = StringField("annotation_taxon_id")
+    annotation_taxon_ancestry = StringField("annotation_taxon_ancestry")
+    annotation_masking = StringField("annotation_masking")

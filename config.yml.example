@@ -8,6 +8,7 @@ models:
     tf_elev_thresholds: "models/.../thresholds.csv"
     taxon_ranges_path: "models/.../taxon_ranges
     geo_min: 0.005
+    annotation_model_path: "models/.../annotation_heads"
   - name: "ModelGenerationName_coord_encoder"
     vision_model_path: "models/.../vision_model.h5"
     taxonomy_path: "models/.../taxonomy.csv"

@@ -21,7 +21,8 @@ class InatVisionAPIResponses:
 
     @staticmethod
     def object_response(leaf_scores, inferrer, common_ancestor_rank_type=None,
-                        embedding=None, debug=False, human_exclusion_strategy=None):
+                        embedding=None, debug=False, human_exclusion_strategy=None,
+                        annotations=None):
         leaf_scores = InatVisionAPIResponses.limit_leaf_scores_for_response(leaf_scores)
         leaf_scores = InatVisionAPIResponses.update_leaf_scores_scaling(leaf_scores)
 
@@ -57,6 +58,8 @@ class InatVisionAPIResponses:
         }
         if embedding is not None:
             response["embedding"] = embedding.numpy().tolist()
+        if annotations is not None:
+            response["annotations"] = annotations
         return response
 
     @staticmethod
@@ -89,7 +92,8 @@ class InatVisionAPIResponses:
 
     @staticmethod
     def aggregated_object_response(
-        leaf_scores, aggregated_scores, inferrer, embedding=None, human_exclusion_strategy=None
+        leaf_scores, aggregated_scores, inferrer, embedding=None, human_exclusion_strategy=None,
+        annotations=None
     ):
         top_leaf_combined_score = aggregated_scores.query(
             "leaf_class_id.notnull()"
@@ -142,6 +146,8 @@ class InatVisionAPIResponses:
         }
         if embedding is not None:
             response["embedding"] = embedding.numpy().tolist()
+        if annotations is not None:
+            response["annotations"] = annotations
         return response
 
     @staticmethod
