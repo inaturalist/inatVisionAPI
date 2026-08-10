@@ -1,5 +1,6 @@
 import pytest
 import os
+import tensorflow as tf
 from unittest.mock import MagicMock
 from lib.inat_inferrer import InatInferrer
 from lib.model_taxonomy_dataframe import ModelTaxonomyDataframe
@@ -20,7 +21,17 @@ def taxon(request, taxonomy):
 
 
 @pytest.fixture()
-def inatInferrer(request, mocker):
+def mock_model():
+    yield MagicMock(
+        return_value=(
+            tf.constant([[0.2, 0.3, 0.5]], dtype=tf.float32),
+            tf.constant([[0.0]]),
+        )
+    )
+
+
+@pytest.fixture()
+def inatInferrer(request, mocker, mock_model):
     config = {
         "vision_model_path": "vision_model_path",
         "tf_geo_elevation_model_path": "tf_geo_elevation_model_path",
@@ -36,5 +47,5 @@ def inatInferrer(request, mocker):
             os.path.realpath(os.path.dirname(__file__) + "/fixtures/synonyms.csv")
     }
     mocker.patch("tensorflow.keras.models.load_model", return_value=MagicMock())
-    mocker.patch("tensorflow.keras.Model", return_value=MagicMock())
+    mocker.patch("tensorflow.keras.Model", return_value=mock_model)
     return InatInferrer(config)

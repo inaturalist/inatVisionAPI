@@ -7,7 +7,6 @@ import math
 import os
 import tifffile
 import numpy as np
-import urllib
 import hashlib
 import magic
 import aiohttp
@@ -30,6 +29,10 @@ class InatInferrer:
     COMMON_ANCESTOR_CUTOFF_RATIO = 0.01
     COMMON_ANCESTOR_WINDOW = 15
     SYNONYMS_CHECK_FREQUENCY = 60
+
+    EMBEDDING_BATCH_SIZE = 4
+    EMBEDDING_DOWNLOAD_WORKERS = 5
+    EMBEDDING_RETURN_DELAY = 0.250
 
     def __init__(self, config):
         self.config = config
@@ -702,48 +705,92 @@ class InatInferrer:
 
     async def embeddings_for_photos(self, photos):
         response = {}
-        async with aiohttp.ClientSession() as session:
-            queue = asyncio.Queue()
-            workers = [asyncio.create_task(self.embeddings_worker_task(queue, response, session))
-                       for _ in range(5)]
-            for photo in photos:
-                queue.put_nowait(photo)
-            await queue.join()
-            for worker in workers:
-                worker.cancel()
+        downloaded_photos = []
+        connector = aiohttp.TCPConnector(
+            limit=InatInferrer.EMBEDDING_DOWNLOAD_WORKERS,
+            limit_per_host=InatInferrer.EMBEDDING_DOWNLOAD_WORKERS,
+        )
+
+        try:
+            async with aiohttp.ClientSession(connector=connector) as session:
+                queue = asyncio.Queue()
+                for photo in photos:
+                    queue.put_nowait(photo)
+                workers = [
+                    asyncio.create_task(
+                        self.photo_download_worker_task(
+                            queue,
+                            downloaded_photos,
+                            response,
+                            session,
+                        )
+                    )
+                    for _ in range(InatInferrer.EMBEDDING_DOWNLOAD_WORKERS)
+                ]
+
+                try:
+                    await queue.join()
+                finally:
+                    for worker in workers:
+                        worker.cancel()
+                    await asyncio.gather(*workers, return_exceptions=True)
+
+            # The session has closed and all successfully downloaded paths
+            # have been collected. Prepare and infer in bounded batches.
+            for offset in range(0, len(downloaded_photos), InatInferrer.EMBEDDING_BATCH_SIZE):
+                photo_batch = downloaded_photos[
+                    offset:offset + InatInferrer.EMBEDDING_BATCH_SIZE
+                ]
+
+                response.update(self.embeddings_for_photo_batch(photo_batch))
+        finally:
+            # Allow aiohttp HTTPS transports to finish closing before
+            # Flask closes this request's event loop.
+            await asyncio.sleep(InatInferrer.EMBEDDING_RETURN_DELAY)
+
         return response
 
-    async def embeddings_worker_task(self, queue, response, session):
-        while not queue.empty():
+    async def photo_download_worker_task(self, queue, downloaded_photos, response, session):
+        while True:
             photo = await queue.get()
+
             try:
-                embedding = await self.embedding_for_photo(photo["url"], session)
-                response[photo["id"]] = embedding
+                photo_id = photo["id"]
+                url = photo.get("url")
+
+                if url is None:
+                    response[photo_id] = None
+                    continue
+
+                cache_path = await self.download_photo_async(url, session)
+                if cache_path is None:
+                    response[photo_id] = None
+                else:
+                    downloaded_photos.append((photo_id, cache_path))
+            except (aiohttp.ClientError, OSError) as error:
+                print(f"Failed to download photo {photo.get('id')}: {error}")
+                response[photo.get("id")] = None
             finally:
                 queue.task_done()
 
-    async def embedding_for_photo(self, url, session):
-        if url is None:
-            return
+    def embeddings_for_photo_batch(self, photos):
+        photo_ids = []
+        prepared_images = []
 
-        try:
-            cache_path = await self.download_photo_async(url, session)
-            if cache_path is None:
-                return
-            return self.signature_for_image(cache_path)
-        except urllib.error.HTTPError:
-            return
+        for photo_id, image_path in photos:
+            image = InatInferrer.prepare_image_for_inference(image_path)
+            photo_ids.append(photo_id)
+            prepared_images.append(image)
 
-    def signature_for_image(self, image_path, debug=False):
-        if debug:
-            start_time = time.time()
-        image = InatInferrer.prepare_image_for_inference(image_path)
-        signature = self.vision_inferrer.process_image(image)["features"]
-        if debug:
-            print("Signature Time: %0.2fms" % ((time.time() - start_time) * 1000.))
-        if signature is None:
-            return
-        return signature.numpy().tolist()
+        if not prepared_images:
+            return {}
+
+        image_batch = tf.concat(prepared_images, axis=0)
+        embeddings = self.vision_inferrer.process_embeddings(
+            image_batch
+        )
+        embeddings_lists = embeddings.numpy().tolist()
+        return dict(zip(photo_ids, embeddings_lists))
 
     async def download_photo_async(self, url, session):
         checksum = hashlib.md5(url.encode()).hexdigest()
@@ -753,9 +800,8 @@ class InatInferrer:
         try:
             async with session.get(url, timeout=10) as resp:
                 if resp.status == 200:
-                    f = await aiofiles.open(cache_path, mode="wb")
-                    await f.write(await resp.read())
-                    await f.close()
+                    async with aiofiles.open(cache_path, mode="wb") as f:
+                        await f.write(await resp.read())
         except asyncio.TimeoutError as e:
             print("`download_photo_async` timed out")
             print(e)
