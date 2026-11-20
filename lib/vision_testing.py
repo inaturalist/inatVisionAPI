@@ -218,9 +218,13 @@ class VisionTesting:
         agg_stats = all_obs_scores_df.groupby("run_label").agg(
             average_results_count=("results_count", "mean"),
             common_ancestor_pool_size=("common_ancestor_pool_size", "mean"),
+            average_top_score=("top_score", "mean"),
+            average_matching_score=("matching_score", "mean"),
+            average_common_ancestor_score=("common_ancestor_score", "mean"),
             precision=("precision", "mean"),
             recall=("recall", "mean"),
-            f1=("f1", "mean")
+            f1=("f1", "mean"),
+            run_time=("run_time", "mean")
         )
         grouped_stats = grouped_stats.merge(
             agg_stats, how="left", left_on="run_label", right_on="run_label"
@@ -229,9 +233,19 @@ class VisionTesting:
         grouped_stats["common_ancestor_pool_size"] = grouped_stats[
             "common_ancestor_pool_size"
         ].round(4)
+        grouped_stats["average_top_score"] = grouped_stats[
+            "average_top_score"
+        ].round(4)
+        grouped_stats["average_matching_score"] = grouped_stats[
+            "average_matching_score"
+        ].round(4)
+        grouped_stats["average_common_ancestor_score"] = grouped_stats[
+            "average_common_ancestor_score"
+        ].round(4)
         grouped_stats["precision"] = grouped_stats["precision"].round(4)
         grouped_stats["recall"] = grouped_stats["recall"].round(4)
         grouped_stats["f1"] = grouped_stats["f1"].round(4)
+        grouped_stats["run_time"] = grouped_stats["run_time"].round(4)
         grouped_stats["nearby%"] = round(
             (grouped_stats["nearby"] / grouped_stats["count"]) * 100, 2
         )
@@ -271,6 +285,7 @@ class VisionTesting:
                 lng = observation.lng
             try:
                 # traditional leaf combined scores, vision * geo
+                start_time = time.time()
                 predictions_for_image = inferrer.predictions_for_image(
                     cache_path, lat, lng, filter_taxon
                 )
@@ -279,17 +294,18 @@ class VisionTesting:
                 inferrer_results[inferrer_index] = self.inferrer_results(
                     inferrer, observation, leaf_scores
                 )
+                run_time = (time.time() - start_time) * 1000.
                 # summarize that high-level data further into the metrics we ultimately want
                 summaries = {}
                 for summary_index, summary in inferrer_results[inferrer_index].items():
                     summaries[summary_index] = self.summarize_result_subset(
-                        inferrer, observation, summary, summary_index)
+                        inferrer, observation, summary, summary_index, run_time)
                     # the "cutoff" variant limits the top100 retults into the subset users might
                     # actually be presented. That means removing results with a score less than
                     # 0.001 times the top score, and using up to 10 of those. This will give values
                     # for precision, recall, f1 relative to user experience rather than all results
                     summaries[f"{summary_index}-cutoff"] = self.summarize_result_subset(
-                        inferrer, observation, summary, summary_index, cutoff=True
+                        inferrer, observation, summary, summary_index, run_time, cutoff=True
                     )
                 summarized_results[inferrer_index] = summaries
 
@@ -330,6 +346,7 @@ class VisionTesting:
             combined_aggregated_scores, score_to_use="combined_score"
         )
 
+        leaf_scores = leaf_scores.query("leaf_class_id.notnull()")
         # record the top 100 scores of 3 score types: vision only, combined, and combined + nearby
         vision_top_100 = leaf_scores.sort_values(
             "vision_score", ascending=False
@@ -340,7 +357,7 @@ class VisionTesting:
         ).reset_index(drop=True).head(100)
 
         combined_nearby_top_100 = leaf_scores.query(
-            "geo_score >= geo_threshold"
+            "geo_score >= geo_threshold and combined_score > 0"
         ).sort_values(
             "combined_score", ascending=False
         ).reset_index(drop=True).head(100)
@@ -379,11 +396,11 @@ class VisionTesting:
 
     def common_ancestor_pool_size(self, aggregated_scores):
         return aggregated_scores.query(
-            "leaf_class_id.notnull()"
+            "leaf_class_id.notnull() and aggregated_vision_score > 0"
         ).index.size
 
     def summarize_result_subset(
-        self, inferrer, observation, inferrer_results, summary_index, cutoff=False
+        self, inferrer, observation, inferrer_results, summary_index, run_time, cutoff=False
     ):
         working_results = inferrer_results["scores"]
         score_column = "vision_score" if summary_index == "vision" else "combined_score"
@@ -450,6 +467,8 @@ class VisionTesting:
         matching_geo_threshold = self.matching_score(observation, working_results, "geo_threshold")
         summary["match_nearby"] = 1 if matching_geo_threshold > 0 and \
             matching_geo_score > matching_geo_threshold else 0
+
+        summary["run_time"] = run_time
 
         return summary
 

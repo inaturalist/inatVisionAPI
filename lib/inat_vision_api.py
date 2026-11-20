@@ -155,16 +155,22 @@ class InatVisionAPI:
 
     def score_image(self, form, file_path, lat, lng, filter_taxon_id, geomodel,
                     common_ancestor_rank_type=None):
+        if self.debug:
+            start_time = time.time()
         filter_taxon = None
         if filter_taxon_id is not None:
             if self.inferrer.taxon_exists(filter_taxon_id):
                 filter_taxon = self.inferrer.lookup_taxon(filter_taxon_id)
             else:
                 filter_taxon = ModelTaxonomyDataframe.undefined_filter_taxon()
+
         predictions_for_image = self.inferrer.predictions_for_image(
             file_path, lat, lng, filter_taxon, debug=self.debug
         )
         leaf_scores = predictions_for_image["combined_scores"]
+
+        if self.debug:
+            print("score_image Time: %0.2fms" % ((time.time() - start_time) * 1000.))
 
         if form.aggregated.data == "true":
             aggregated_scores = self.inferrer.aggregate_results(leaf_scores, debug=self.debug)
@@ -173,11 +179,14 @@ class InatVisionAPI:
                     aggregated_scores, self.inferrer
                 )
             embedding = predictions_for_image["features"]
-            return InatVisionAPIResponses.aggregated_object_response(
+            response = InatVisionAPIResponses.aggregated_object_response(
                 leaf_scores, aggregated_scores, self.inferrer,
                 embedding=embedding,
                 human_exclusion_strategy=form.human_exclusion.data
             )
+            if self.debug:
+                print("total Time: %0.2fms" % ((time.time() - start_time) * 1000.))
+            return response
 
         # legacy dict response
         if geomodel != "true":
@@ -185,7 +194,7 @@ class InatVisionAPI:
 
         if form.format.data == "object":
             embedding = predictions_for_image["features"]
-            return InatVisionAPIResponses.object_response(
+            response = InatVisionAPIResponses.object_response(
                 leaf_scores,
                 self.inferrer,
                 common_ancestor_rank_type=common_ancestor_rank_type,
@@ -193,6 +202,9 @@ class InatVisionAPI:
                 human_exclusion_strategy=form.human_exclusion.data,
                 debug=self.debug
             )
+            if self.debug:
+                print("total Time: %0.2fms" % ((time.time() - start_time) * 1000.))
+            return response
 
         return InatVisionAPIResponses.array_response(leaf_scores, self.inferrer)
 
@@ -223,8 +235,12 @@ class InatVisionAPI:
             latlng = [None, None]
         else:
             latlng = data["results"][0]["location"].split(",")
+        if data["results"][0]["taxon"] is None:
+            iconic_taxon_id = None
+        else:
+            iconic_taxon_id = data["results"][0]["taxon"]["iconic_taxon_id"]
         # return the path to the cached image, coordinates, and iconic taxon
-        return cache_path, latlng[0], latlng[1], data["results"][0]["taxon"]["iconic_taxon_id"]
+        return cache_path, latlng[0], latlng[1], iconic_taxon_id
 
     def valid_leaf_taxon_id_for_request(self, request):
         if "taxon_id" in request.args:
