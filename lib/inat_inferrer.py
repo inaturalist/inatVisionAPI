@@ -271,14 +271,12 @@ class InatInferrer:
     def taxonomy_length_nan(self):
         return np.full(len(self.taxonomy.df), np.nan, dtype=np.float32)
 
-    def pad_to_match_length(self, arr, comparison, pad_with_nan=True):
+    def pad_to_match_length(self, arr, comparison):
         length_diff = len(comparison) - len(arr)
         if length_diff == 0:
             return arr
         if length_diff < 0:
             raise ValueError("Cannot pad an array when the comparison array is shorter")
-        if pad_with_nan:
-            np.pad(arr, (0, length_diff), constant_values=np.nan)
         return np.pad(arr, (0, length_diff))
 
     def predictions_for_image(self, file_path, lat, lng, filter_taxon, debug=False):
@@ -516,8 +514,8 @@ class InatInferrer:
             # weight of the "surrogate", or the amount of extra score we will apply to the genus
             # that is not visible in the leaves alone
 
-            # dggd_factor = direct_genus_geo_diff * 0.5
-            dggd_factor = direct_genus_geo_diff * spatial_scores["normalized_combined_score"]
+            dggd_factor = direct_genus_geo_diff * 0.5
+            # dggd_factor = direct_genus_geo_diff * spatial_scores["normalized_combined_score"]
             dggd_geo_score = original_raw_h3_geo_scores_leaves + dggd_factor
             dggd_normalized_geo_score = np.maximum(dggd_geo_score, 0.005)
             # dggd_combined represents the original leaf combined scores plus the weight of the
@@ -539,25 +537,22 @@ class InatInferrer:
             # combined_score from the manipulations in the new few lines, and from the aggregation
             # below
 
-            weight = 0.5
-            spatial_scores["combined_score"] = weight * spatial_scores["combined_score"] + \
-                (1 - weight) * spatial_scores["dggd_combined"]
+            # weight = 0.5
+            # spatial_scores["combined_score"] = weight * spatial_scores["combined_score"] + \
+            #     (1 - weight) * spatial_scores["dggd_combined"]
 
             dggd_combined = spatial_scores["dggd_combined"].to_numpy(dtype=np.float32, copy=True)
-            combined_scores = spatial_scores["combined_score"].to_numpy(dtype=np.float32, copy=True)
+            # combined_scores = spatial_scores["combined_score"].to_numpy(dtype=np.float32, copy=True)
             dggd_combined[np.isnan(dggd_combined)] = 0
             aggregate_taxonomy_up_inplace(
                 self.taxonomy.aggregation_index.parent_position,
                 self.taxonomy.aggregation_index.postorder,
                 min_arrays=(),
                 max_arrays=(),
-                sum_arrays=(
-                    dggd_combined,
-                    combined_scores
-                )
+                sum_arrays=(dggd_combined,)
             )
             spatial_scores["dggd_combined_aggregated"] = dggd_combined
-            spatial_scores["combined_score"] = combined_scores
+            # spatial_scores["combined_score"] = combined_scores
 
             sum_of_genus_diff_combined = spatial_scores.query(
                 "leaf_class_id.notnull()"
