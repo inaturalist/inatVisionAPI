@@ -1,3 +1,4 @@
+import time
 import numpy as np
 import pandas as pd
 from lib.model_taxonomy_dataframe import ModelTaxonomyDataframe
@@ -20,10 +21,17 @@ class InatVisionAPIResponses:
         return InatVisionAPIResponses.array_response_columns(leaf_scores).to_dict(orient="records")
 
     @staticmethod
-    def object_response(leaf_scores, inferrer, common_ancestor_rank_type=None,
+    def object_response(all_scores, inferrer, common_ancestor_rank_type=None,
                         embedding=None, debug=False, human_exclusion_strategy=None):
+
+        if debug:
+            start_time = time.time()
+        leaf_scores = all_scores.query("leaf_class_id.notnull() and vision_score > 0")
         leaf_scores = InatVisionAPIResponses.limit_leaf_scores_for_response(leaf_scores)
         leaf_scores = InatVisionAPIResponses.update_leaf_scores_scaling(leaf_scores)
+        if debug:
+            print("object_response update_scaling: %0.2fms" % ((time.time() - start_time) * 1000.))
+            start_time = time.time()
 
         post_human_exclusion_scores = inferrer.limit_leaf_scores_that_include_humans(
             leaf_scores, strategy=human_exclusion_strategy
@@ -32,15 +40,21 @@ class InatVisionAPIResponses:
         if not leaf_scores.empty and post_human_exclusion_scores.empty:
             human_exclusion_cleared_results = True
         leaf_scores = post_human_exclusion_scores
+
         results = InatVisionAPIResponses.array_response_columns(
             leaf_scores.sort_values(
                 "combined_score",
                 ascending=False
             ).head(10)
         ).to_dict(orient="records")
+        if inferrer.new_scoring:
+            all_scores = InatVisionAPIResponses.update_leaf_scores_scaling(all_scores)
         common_ancestor = inferrer.common_ancestor_from_leaf_scores(
-            leaf_scores, common_ancestor_rank_type=common_ancestor_rank_type, debug=debug
+            all_scores, common_ancestor_rank_type=common_ancestor_rank_type, debug=debug
         )
+        if debug:
+            print("object_response common_ancestor: %0.2fms" % ((time.time() - start_time) * 1000.))
+            start_time = time.time()
         if common_ancestor is not None:
             common_ancestor_frame = pd.DataFrame([common_ancestor])
             common_ancestor_frame = InatVisionAPIResponses.update_common_ancestor_scores_scaling(
@@ -57,6 +71,9 @@ class InatVisionAPIResponses:
         }
         if embedding is not None:
             response["embedding"] = embedding.numpy().tolist()
+        if debug:
+            print("object_response remainder: %0.2fms" % ((time.time() - start_time) * 1000.))
+            start_time = time.time()
         return response
 
     @staticmethod
@@ -127,6 +144,7 @@ class InatVisionAPIResponses:
 
         common_ancestor = inferrer.common_ancestor_from_leaf_scores(
             leaf_scores, debug=True, disallow_humans=True)
+
         if common_ancestor is not None:
             common_ancestor_frame = pd.DataFrame([common_ancestor])
             common_ancestor_frame = InatVisionAPIResponses.update_aggregated_scores_scaling(
@@ -148,10 +166,7 @@ class InatVisionAPIResponses:
     def limit_leaf_scores_for_response(leaf_scores):
         if leaf_scores.empty:
             return leaf_scores
-        top_combined_score = leaf_scores.sort_values(
-            "combined_score",
-            ascending=False
-        ).head(1)["combined_score"].values[0]
+        top_combined_score = leaf_scores["combined_score"].max()
         # set a cutoff so results whose combined scores are
         # much lower than the best score are not returned
         leaf_scores = leaf_scores.query(f"combined_score > {top_combined_score * 0.001}")
@@ -162,7 +177,6 @@ class InatVisionAPIResponses:
         score_columns = [
             "normalized_combined_score",
             "geo_score",
-            "raster_geo_score",
             "normalized_vision_score",
             "geo_threshold"
         ]
@@ -187,9 +201,9 @@ class InatVisionAPIResponses:
             "aggregated_combined_score",
             "normalized_aggregated_combined_score",
             "aggregated_geo_score",
-            "aggregated_raster_geo_score",
             "aggregated_vision_score",
-            "aggregated_geo_threshold"
+            "aggregated_geo_threshold",
+            "normalized_geo_score"
         ]
         aggregated_scores[score_columns] = aggregated_scores[
             score_columns
@@ -201,7 +215,6 @@ class InatVisionAPIResponses:
         columns_to_return = [
             "normalized_combined_score",
             "geo_score",
-            "raster_geo_score",
             "taxon_id",
             "name",
             "normalized_vision_score",
@@ -239,7 +252,6 @@ class InatVisionAPIResponses:
             "aggregated_combined_score",
             "normalized_aggregated_combined_score",
             "aggregated_geo_score",
-            "aggregated_raster_geo_score",
             "taxon_id",
             "parent_taxon_id",
             "name",
@@ -249,6 +261,7 @@ class InatVisionAPIResponses:
             "depth",
             "aggregated_vision_score",
             "aggregated_geo_threshold",
+            "normalized_geo_score"
         ]
         column_mapping = {
             "taxon_id": "id",
@@ -256,7 +269,6 @@ class InatVisionAPIResponses:
             "aggregated_combined_score": "combined_score",
             "normalized_aggregated_combined_score": "normalized_combined_score",
             "aggregated_geo_score": "geo_score",
-            "aggregated_raster_geo_score": "raster_geo_score",
             "aggregated_vision_score": "vision_score",
             "aggregated_geo_threshold": "geo_threshold"
         }

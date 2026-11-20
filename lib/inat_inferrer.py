@@ -19,6 +19,8 @@ from lib.tf_gp_elev_model import TFGeoPriorModelElev
 from lib.coord_encoder import CoordEncoder
 from lib.vision_inferrer import VisionInferrer
 from lib.model_taxonomy_dataframe import ModelTaxonomyDataframe
+from lib.model_taxonomy_dataframe import propagate_max_down_tree_inplace
+from lib.model_taxonomy_dataframe import aggregate_taxonomy_up_inplace
 
 pd.options.mode.copy_on_write = True
 
@@ -43,6 +45,9 @@ class InatInferrer:
         self.setup_coord_encoder()
         self.setup_geo_model()
         self.upload_folder = "static/"
+        self.new_scoring = self.config["new_scoring"] if "new_scoring" in self.config else False
+        self.innernode_geomodel = self.config["geomodel_innernode"] if "geomodel_innernode" in self.config else False
+        self.innernode_scoring = self.config["innernode_scoring"] if "innernode_scoring" in self.config else False
 
     def setup_taxonomy(self):
         self.taxonomy = ModelTaxonomyDataframe(
@@ -97,6 +102,8 @@ class InatInferrer:
 
         # record when the synonyms file was updated to know later when to refresh it
         self.synonyms_path_updated_at = os.path.getmtime(self.config["synonyms_path"])
+        # TODO: restore synonym taxonomy when it works with innernodes
+        # and `aggregate_taxonomy_up_inplace`
         self.setup_synonym_taxonomy()
 
     def setup_synonym_taxonomy(self):
@@ -241,7 +248,9 @@ class InatInferrer:
 
         if debug:
             print("Geo Time: %0.2fms" % ((time.time() - start_time) * 1000.))
-        return geo_scores
+        if geo_scores is None:
+            return None
+        return np.array(geo_scores, dtype=np.float32)
 
     def taxon_exists(self, taxon_id):
         return taxon_id in self.taxonomy.df.index
@@ -256,7 +265,25 @@ class InatInferrer:
             print(f"taxon `{taxon_id}` does not exist in the taxonomy")
             raise e
 
+    def taxonomy_length_zeros(self):
+        return np.zeros(len(self.taxonomy.df), dtype=np.float32)
+
+    def taxonomy_length_nan(self):
+        return np.full(len(self.taxonomy.df), np.nan, dtype=np.float32)
+
+    def pad_to_match_length(self, arr, comparison):
+        length_diff = len(comparison) - len(arr)
+        if length_diff == 0:
+            return arr
+        if length_diff < 0:
+            raise ValueError("Cannot pad an array when the comparison array is shorter")
+        return np.pad(arr, (0, length_diff))
+
     def predictions_for_image(self, file_path, lat, lng, filter_taxon, debug=False):
+        if self.new_scoring:
+            # print("USING NEW SCORING FOR predictions_for_image")
+            return self.predictions_for_image_new_scoring(file_path, lat, lng, filter_taxon, debug)
+
         if debug:
             start_time = time.time()
         image = InatInferrer.prepare_image_for_inference(file_path)
@@ -267,14 +294,288 @@ class InatInferrer:
         combined_scores = self.combine_results(
             raw_vision_scores, raw_h3_geo_scores, filter_taxon, raw_raster_geo_scores, debug
         )
-        combined_scores = self.map_result_synonyms(combined_scores, debug)
+        # TODO: restore synonym taxonomy when it works with innernodes
+        # combined_scores = self.map_result_synonyms(combined_scores, debug)
         # for any taxon that doesn't have a geo threshold, set it to 1 which is the highest
         # possible value, and thus all its taxa will not be considered "expected nearby"
         combined_scores["geo_threshold"] = combined_scores["geo_threshold"].fillna(1)
         if debug:
             print("Prediction Time: %0.2fms" % ((time.time() - start_time) * 1000.))
+
         return {
             "combined_scores": combined_scores,
+            "features": vision_model_results["features"]
+        }
+
+    def filter_raw_vision_and_geo_scores(self, filter_taxon, raw_vision_scores,
+                                         raw_h3_geo_scores, thresholds):
+        no_geo_scores = (raw_h3_geo_scores is None)
+        if filter_taxon is not None:
+            # using nested set left and right values, select the filter taxon and its descendants
+            filtered_taxa = self.taxonomy.spatial_df.query(
+                f'(left >= {filter_taxon["left"]} and right <= {filter_taxon["right"]}) or '
+                f'(left < {filter_taxon["left"]} and right > {filter_taxon["right"]})'
+            )
+
+            filtered_positions = filtered_taxa["spatial_class_id"].to_numpy(dtype=np.int32)
+            mask = np.ones(len(self.taxonomy.df), dtype=bool)
+            mask[filtered_positions] = False
+            raw_vision_scores[mask] = np.nan
+            thresholds[mask] = np.nan
+            if not no_geo_scores:
+                raw_h3_geo_scores[mask] = np.nan
+            normalized_vision_scores = raw_vision_scores / np.nansum(raw_vision_scores)
+        else:
+            normalized_vision_scores = raw_vision_scores
+        return [raw_vision_scores, raw_h3_geo_scores, normalized_vision_scores, thresholds]
+
+    def predictions_for_image_new_scoring(self, file_path, lat, lng, filter_taxon, debug=False):
+        if self.innernode_scoring:
+            # print("USING INNERNODE SCORING FOR predictions_for_image")
+            return self.predictions_for_image_innernnode(file_path, lat, lng, filter_taxon, debug)
+
+        if debug:
+            start_time = time.time()
+        image = InatInferrer.prepare_image_for_inference(file_path)
+
+        if debug:
+            print("image prep time: %0.2fms" % ((time.time() - start_time) * 1000.))
+            start_time = time.time()
+
+        vision_model_results = self.vision_predict(image, debug)
+        raw_vision_scores = vision_model_results["predictions"]
+        raw_h3_geo_scores = self.geo_model_predict(lat, lng, encoder="h3", debug=debug)
+        no_geo_scores = (raw_h3_geo_scores is None)
+
+        if debug:
+            print("Prediction Time: %0.2fms" % ((time.time() - start_time) * 1000.))
+            start_time = time.time()
+
+        raw_vision_scores = self.pad_to_match_length(raw_vision_scores, self.taxonomy.df)
+        if not no_geo_scores:
+            raw_h3_geo_scores = self.pad_to_match_length(raw_h3_geo_scores, self.taxonomy.df)
+
+        raw_vision_scores, raw_h3_geo_scores, normalized_vision_scores, thresholds = self. \
+            filter_raw_vision_and_geo_scores(
+                filter_taxon, raw_vision_scores, raw_h3_geo_scores,
+                self.taxonomy.spatial_df["geo_threshold"].to_numpy(dtype=np.float32)
+            )
+
+        if no_geo_scores:
+            combined_scores = normalized_vision_scores
+            normalized_geo_scores = None
+        else:
+            normalized_geo_scores = np.maximum(raw_h3_geo_scores, 0.005)
+            combined_scores = (
+                normalized_vision_scores * normalized_geo_scores
+            )
+
+        spatial_scores = self.taxonomy.spatial_df.copy(deep=False)
+        spatial_scores["vision_score"] = raw_vision_scores
+        spatial_scores["normalized_vision_score"] = normalized_vision_scores
+        if no_geo_scores:
+            spatial_scores["geo_score"] = 0
+            spatial_scores["normalized_geo_score"] = 0
+        else:
+            spatial_scores["geo_score"] = raw_h3_geo_scores
+            spatial_scores["normalized_geo_score"] = normalized_geo_scores
+        spatial_scores["combined_score"] = combined_scores
+
+        if no_geo_scores:
+            spatial_scores["normalized_combined_score"] = spatial_scores["combined_score"]
+        else:
+            sum_of_combined_scores = np.nansum(combined_scores)
+            if sum_of_combined_scores > 0:
+                normalized_combined_scores = combined_scores / sum_of_combined_scores
+                spatial_scores["normalized_combined_score"] = normalized_combined_scores
+            else:
+                spatial_scores["normalized_combined_score"] = 0
+
+        return {
+            "combined_scores": spatial_scores,
+            "features": vision_model_results["features"]
+        }
+
+    def predictions_for_image_innernnode(self, file_path, lat, lng, filter_taxon, debug=False):
+        if debug:
+            start_time = time.time()
+        image = InatInferrer.prepare_image_for_inference(file_path)
+
+        if debug:
+            print("image prep time: %0.2fms" % ((time.time() - start_time) * 1000.))
+            start_time = time.time()
+
+        vision_model_results = self.vision_predict(image, debug)
+        raw_vision_scores = vision_model_results["predictions"]
+        vision_length = len(raw_vision_scores)
+        raw_h3_geo_scores = self.geo_model_predict(lat, lng, encoder="h3", debug=debug)
+        no_geo_scores = (raw_h3_geo_scores is None)
+
+        if debug:
+            print("Prediction Time: %0.2fms" % ((time.time() - start_time) * 1000.))
+            start_time = time.time()
+
+        raw_vision_scores = self.pad_to_match_length(raw_vision_scores, self.taxonomy.df)
+        if not no_geo_scores:
+            raw_h3_geo_scores = self.pad_to_match_length(raw_h3_geo_scores, self.taxonomy.df)
+
+        raw_vision_scores, raw_h3_geo_scores, normalized_vision_scores, thresholds = self. \
+            filter_raw_vision_and_geo_scores(
+                filter_taxon, raw_vision_scores, raw_h3_geo_scores,
+                self.taxonomy.spatial_df["geo_threshold"].to_numpy(dtype=np.float32)
+            )
+
+        if no_geo_scores:
+            normalized_vision_scores[np.isnan(normalized_vision_scores)] = 0
+            combined_scores = normalized_vision_scores.copy()
+            normalized_geo_scores = None
+            aggregate_taxonomy_up_inplace(
+                self.taxonomy.aggregation_index.parent_position,
+                self.taxonomy.aggregation_index.postorder,
+                min_arrays=(thresholds,),
+                max_arrays=(),
+                sum_arrays=(
+                    normalized_vision_scores,
+                    combined_scores
+                )
+            )
+        else:
+            raw_h3_geo_scores_leaves = raw_h3_geo_scores[:vision_length]
+            raw_h3_geo_scores_leaves = self.pad_to_match_length(
+                raw_h3_geo_scores_leaves,
+                self.taxonomy.df
+            )
+            original_raw_h3_geo_scores_leaves = raw_h3_geo_scores_leaves.copy()
+            normalized_geo_scores = np.maximum(raw_h3_geo_scores, 0.005)
+            unaggregated_normalized_vision_score = normalized_vision_scores.copy()
+            # this makes non leaf combined scores 0 or nan if there is no vision score
+            combined_scores = (
+                normalized_vision_scores * normalized_geo_scores
+            )
+            combined_scores[np.isnan(combined_scores)] = 0
+            normalized_vision_scores[np.isnan(normalized_vision_scores)] = 0
+            raw_h3_geo_scores[np.isnan(raw_h3_geo_scores)] = 0
+            aggregate_taxonomy_up_inplace(
+                self.taxonomy.aggregation_index.parent_position,
+                self.taxonomy.aggregation_index.postorder,
+                min_arrays=(thresholds,),
+                max_arrays=(
+                    raw_h3_geo_scores,
+                    raw_h3_geo_scores_leaves
+                ),
+                sum_arrays=(combined_scores,)
+            )
+
+        spatial_scores = self.taxonomy.spatial_df.copy(deep=False)
+        spatial_scores["vision_score"] = raw_vision_scores
+        spatial_scores["normalized_vision_score"] = normalized_vision_scores
+        if no_geo_scores:
+            spatial_scores["geo_score"] = 0
+            spatial_scores["normalized_geo_score"] = 0
+        else:
+            spatial_scores["geo_score"] = raw_h3_geo_scores
+            spatial_scores["normalized_geo_score"] = normalized_geo_scores
+            spatial_scores["leaf_geo_score"] = raw_h3_geo_scores_leaves
+        spatial_scores["combined_score"] = combined_scores
+        spatial_scores["original_combined_score"] = combined_scores
+        spatial_scores["geo_threshold"] = thresholds
+
+        if no_geo_scores:
+            spatial_scores["normalized_combined_score"] = spatial_scores["combined_score"]
+            spatial_scores["dggd_combined"] = spatial_scores["combined_score"]
+        else:
+            sum_of_combined_scores = spatial_scores.query(
+                "leaf_class_id.notnull()"
+            )["combined_score"].sum()
+            if sum_of_combined_scores > 0:
+                normalized_combined_scores = combined_scores / sum_of_combined_scores
+                spatial_scores["normalized_combined_score"] = normalized_combined_scores
+            else:
+                spatial_scores["normalized_combined_score"] = 0
+
+            # at genera, calculate the difference in the direct genus geo score and the aggregated
+            # geo scored from descendants
+            direct_genus_geo_diff = (
+                spatial_scores["geo_score"] - spatial_scores["leaf_geo_score"]
+            ).where(spatial_scores["rank_level"].eq(20), 0.0).to_numpy(dtype=np.float32, copy=True)
+
+            # send that genus geo diff down to leaves
+            propagate_max_down_tree_inplace(
+                direct_genus_geo_diff,
+                self.taxonomy.aggregation_index.parent_position,
+                self.taxonomy.aggregation_index.preorder
+            )
+
+            # TODO: the rest of the scoring here is still a work in progress. I'm still evaluating
+            # different methods to how we weight and apply the genus geo difference to leaf nodes.
+
+            # Ultimately this will produce an alternate combined_score for leaves. That combined
+            # score will be greater than the original leaf combined score. The difference is the
+            # weight of the "surrogate", or the amount of extra score we will apply to the genus
+            # that is not visible in the leaves alone
+
+            dggd_factor = direct_genus_geo_diff * 0.5
+            # dggd_factor = direct_genus_geo_diff * spatial_scores["normalized_combined_score"]
+            dggd_geo_score = original_raw_h3_geo_scores_leaves + dggd_factor
+            dggd_normalized_geo_score = np.maximum(dggd_geo_score, 0.005)
+            # dggd_combined represents the original leaf combined scores plus the weight of the
+            # surrogate data that will be applied to genera
+            spatial_scores["dggd_combined"] = dggd_normalized_geo_score * \
+                unaggregated_normalized_vision_score
+
+            # TODO: this bit of scoring is also still in evaluation. Without this, the leaf combined
+            # scores do not change and after applying the innernode extra genus weighting, the order
+            # and relative differences between leaf scores remain exactly the same. In essence -
+            # without this out top1 always remains the top1, it just has a lower score
+
+            # What changes is the scale of the scores - i.e. all leaf combined scores will be lower
+            # than they originally were because genera have more weight. What I'm testing here is
+            # should we sometimes spread some of that extra genus weight to leaves to minimize how
+            # much leaf combined scores get lowered by this approach
+
+            # If we don't want to alter the relative difference of leaf combined scores, remove
+            # combined_score from the manipulations in the new few lines, and from the aggregation
+            # below
+
+            # weight = 0.5
+            # spatial_scores["combined_score"] = weight * spatial_scores["combined_score"] + \
+            #     (1 - weight) * spatial_scores["dggd_combined"]
+
+            dggd_combined = spatial_scores["dggd_combined"].to_numpy(dtype=np.float32, copy=True)
+            # combined_scores = spatial_scores["combined_score"].to_numpy(dtype=np.float32, copy=True)
+            dggd_combined[np.isnan(dggd_combined)] = 0
+            aggregate_taxonomy_up_inplace(
+                self.taxonomy.aggregation_index.parent_position,
+                self.taxonomy.aggregation_index.postorder,
+                min_arrays=(),
+                max_arrays=(),
+                sum_arrays=(dggd_combined,)
+            )
+            spatial_scores["dggd_combined_aggregated"] = dggd_combined
+            # spatial_scores["combined_score"] = combined_scores
+
+            sum_of_genus_diff_combined = spatial_scores.query(
+                "leaf_class_id.notnull()"
+            )["dggd_combined"].sum()
+            spatial_scores["dggd_combined_normalized"] = spatial_scores[
+                "dggd_combined_aggregated"
+            ] / sum_of_genus_diff_combined
+            # re-normalize the combined scores this time against the sum of the dggd_combined
+            # scores. This is the step where the original leaf combined scores get lowered -
+            # relative to how much genera are getting boosted. If we did not alter the combined
+            # scores just above, then the relative difference in leaf combined scores remain
+            # exactly the same (i.e. positions do not change), just the values are lower
+            normalized_combined_score_post_geo = combined_scores / sum_of_genus_diff_combined
+            # taxa below genus retain their original combined scores, re-normalized. Genera and
+            # above use the dggd_combined scores with enhanced weight
+            spatial_scores["normalized_combined_score"] = np.where(
+                spatial_scores["rank_level"] < 20,
+                normalized_combined_score_post_geo,
+                spatial_scores["dggd_combined_normalized"],
+            )
+
+        return {
+            "combined_scores": spatial_scores,
             "features": vision_model_results["features"]
         }
 
@@ -293,11 +594,10 @@ class InatInferrer:
         # add a column for vision scores
         leaf_scores["vision_score"] = raw_vision_scores
         # add a column for geo scores
-        InatInferrer.add_geo_score_column(leaf_scores, raw_geo_scores, "geo_score")
-        geo_column_for_scoring = "normalized_geo_score"
-        InatInferrer.add_geo_score_column(
-            leaf_scores, raw_raster_geo_scores, "raster_geo_score"
+        leaf_scores = InatInferrer.add_geo_score_column(
+            leaf_scores, raw_geo_scores, "geo_score", self
         )
+        geo_column_for_scoring = "normalized_geo_score"
         if raw_raster_geo_scores is not None:
             # when raster geo scores are present, use them for calculating combined score
             geo_column_for_scoring = "normalized_raster_geo_score"
@@ -385,10 +685,42 @@ class InatInferrer:
             print("Synonym Mapping Time: %0.2fms" % ((time.time() - start_time) * 1000.))
         return leaf_scores
 
+    def restrict_results(self, all_scores, debug=False,
+                         score_ratio_cutoff=0.001,
+                         max_leaf_scores_to_consider=None,
+                         column_for_cutoff="combined_score"):
+        top_combined_score = all_scores[column_for_cutoff].max()
+
+        # define some cutoff based on a percentage of the top combined score. Taxa with
+        # scores below the cutoff will be ignored when aggregating scores up the taxonomy
+        cutoff = top_combined_score * score_ratio_cutoff
+
+        # restrict score aggregation to results where the combined score is above the cutoff
+        restricted_results = all_scores.query(
+            f"{column_for_cutoff} > {cutoff}"
+        )
+
+        if max_leaf_scores_to_consider is not None:
+            restricted_results = restricted_results.sort_values(
+                column_for_cutoff, ascending=False
+            ).head(max_leaf_scores_to_consider)
+
+        return restricted_results
+
     def aggregate_results(self, leaf_scores, debug=False,
                           score_ratio_cutoff=0.001,
                           max_leaf_scores_to_consider=None,
                           column_for_cutoff="combined_score"):
+        if self.new_scoring:
+            # print("USING NEW SCORING FOR aggregate_results")
+            return self.aggregate_results_new_scoring(
+                leaf_scores,
+                debug=debug,
+                score_ratio_cutoff=score_ratio_cutoff,
+                max_leaf_scores_to_consider=max_leaf_scores_to_consider,
+                column_for_cutoff=column_for_cutoff
+            )
+
         if debug:
             start_time = time.time()
 
@@ -398,7 +730,7 @@ class InatInferrer:
         # copy columns from the already calculated leaf scores including scores
         # and class_id columns which will not be populated for synonyms in the taxonomy
         columns_to_copy = [
-            "taxon_id", "vision_score", "normalized_vision_score", "geo_score", "raster_geo_score",
+            "taxon_id", "vision_score", "normalized_vision_score", "geo_score",
             "combined_score", "normalized_geo_score", "leaf_class_id", "iconic_class_id",
             "spatial_class_id"
         ]
@@ -410,31 +742,17 @@ class InatInferrer:
             suffixes=["_x", None]
         ).set_index("taxon_id", drop=False)
 
-        # calculate the highest combined score from leaf_scores
-        top_combined_score = leaf_scores.sort_values(
-            column_for_cutoff, ascending=False
-        ).head(1)[column_for_cutoff].values[0]
-        # define some cutoff based on a percentage of the top combined score. Taxa with
-        # scores below the cutoff will be ignored when aggregating scores up the taxonomy
-        cutoff = top_combined_score * score_ratio_cutoff
-
-        # restrict score aggregation to results where the combined score is above the cutoff
-        scores_to_aggregate = leaf_scores.query(
-            f"{column_for_cutoff} > {cutoff}"
+        scores_to_aggregate = self.restrict_results(
+            leaf_scores, debug, score_ratio_cutoff, max_leaf_scores_to_consider, column_for_cutoff
         )
-        if max_leaf_scores_to_consider is not None:
-            scores_to_aggregate = scores_to_aggregate.sort_values(
-                column_for_cutoff, ascending=False
-            ).head(max_leaf_scores_to_consider)
 
         # loop through all results where the combined score is above the cutoff
         aggregated_scores = {}
         for taxon_id, vision_score, geo_score, \
-            raster_geo_score, combined_score, geo_threshold in zip(
+            combined_score, geo_threshold in zip(
                 scores_to_aggregate["taxon_id"],
                 scores_to_aggregate["normalized_vision_score"],
                 scores_to_aggregate["geo_score"],
-                scores_to_aggregate["raster_geo_score"],
                 scores_to_aggregate["combined_score"],
                 scores_to_aggregate["geo_threshold"]):
             # loop through the pre-calculated ancestors of this result's taxon
@@ -445,7 +763,6 @@ class InatInferrer:
                     aggregated_scores[ancestor_taxon_id]["aggregated_vision_score"] = 0
                     aggregated_scores[ancestor_taxon_id]["aggregated_combined_score"] = 0
                     aggregated_scores[ancestor_taxon_id]["aggregated_geo_score"] = 0
-                    aggregated_scores[ancestor_taxon_id]["aggregated_raster_geo_score"] = 0
                     aggregated_scores[ancestor_taxon_id][
                         "aggregated_geo_threshold"
                     ] = geo_threshold if (ancestor_taxon_id == taxon_id) else 1.0
@@ -458,10 +775,6 @@ class InatInferrer:
                     aggregated_scores[ancestor_taxon_id][
                         "aggregated_geo_score"
                     ] = geo_score
-                if geo_score > aggregated_scores[ancestor_taxon_id]["aggregated_raster_geo_score"]:
-                    aggregated_scores[ancestor_taxon_id][
-                        "aggregated_raster_geo_score"
-                    ] = raster_geo_score
 
                 # aggregated geo threshold is the min of descendant geo thresholds
                 if ancestor_taxon_id != taxon_id and geo_threshold < aggregated_scores[
@@ -488,10 +801,138 @@ class InatInferrer:
         all_node_scores["normalized_aggregated_combined_score"] = all_node_scores[
             "aggregated_combined_score"] / sum_of_root_node_aggregated_combined_scores
 
+        all_node_scores["normalized_geo_score"] = all_node_scores["normalized_geo_score"].fillna(0)
         if debug:
             print("Aggregation Time: %0.2fms" % ((time.time() - start_time) * 1000.))
             # InatInferrer.print_aggregated_scores(all_node_scores)
         return all_node_scores
+
+    def aggregate_results_new_scoring(self, leaf_scores, debug=False,
+                                      score_ratio_cutoff=0.001,
+                                      max_leaf_scores_to_consider=None,
+                                      column_for_cutoff="combined_score"):
+        if self.innernode_scoring:
+            # print("USING INNERNODE SCORING FOR aggregate_results_new_scoring_innernode")
+            return self.aggregate_results_new_scoring_innernode(
+                leaf_scores,
+                debug=debug,
+                score_ratio_cutoff=score_ratio_cutoff,
+                max_leaf_scores_to_consider=max_leaf_scores_to_consider,
+                column_for_cutoff=column_for_cutoff
+            )
+
+        if debug:
+            start_time = time.time()
+        scores_to_aggregate = self.restrict_results(
+            leaf_scores.query("leaf_class_id.notnull() and vision_score > 0"), debug,
+            score_ratio_cutoff, max_leaf_scores_to_consider, column_for_cutoff
+        )
+
+        positions = np.asarray(scores_to_aggregate["spatial_class_id"], dtype=np.int32)
+        vision_scores = self.taxonomy_length_zeros()
+        combined_scores = self.taxonomy_length_zeros()
+        geo_scores = self.taxonomy_length_zeros()
+        geo_thresholds = self.taxonomy_length_nan()
+        vision_scores[positions] = leaf_scores["normalized_vision_score"][positions]
+        combined_scores[positions] = leaf_scores["combined_score"][positions]
+        geo_scores[positions] = leaf_scores["geo_score"][positions]
+        geo_thresholds[positions] = leaf_scores["geo_threshold"][positions]
+
+        aggregate_taxonomy_up_inplace(
+            self.taxonomy.aggregation_index.parent_position,
+            self.taxonomy.aggregation_index.postorder,
+            min_arrays=(geo_thresholds,),
+            max_arrays=(geo_scores,),
+            sum_arrays=(
+                vision_scores,
+                combined_scores
+            )
+        )
+
+        leaf_scores = leaf_scores.copy(deep=False)
+        leaf_scores["aggregated_vision_score"] = vision_scores
+        leaf_scores["aggregated_combined_score"] = combined_scores
+        leaf_scores["aggregated_geo_score"] = geo_scores
+        leaf_scores["aggregated_geo_threshold"] = geo_thresholds
+
+        if debug:
+            print("aggregate_results_new_scoring: %0.2fms" % ((time.time() - start_time) * 1000.))
+            start_time = time.time()
+
+        sum_of_root_node_aggregated_vision_scores = leaf_scores.query(
+            "parent_taxon_id.isnull()")["aggregated_vision_score"].sum()
+        leaf_scores["normalized_aggregated_vision_score"] = leaf_scores[
+            "aggregated_vision_score"] / sum_of_root_node_aggregated_vision_scores
+        sum_of_root_node_aggregated_combined_scores = leaf_scores.query(
+            "parent_taxon_id.isnull()")["aggregated_combined_score"].sum()
+        leaf_scores["normalized_aggregated_combined_score"] = leaf_scores[
+            "aggregated_combined_score"] / sum_of_root_node_aggregated_combined_scores
+
+        if debug:
+            print("aggregate_results_new_scoring normalization: %0.2fms" % ((time.time() - start_time) * 1000.))
+        return leaf_scores
+
+    def aggregate_results_new_scoring_innernode(self, leaf_scores, debug=False,
+                                                score_ratio_cutoff=0.001,
+                                                max_leaf_scores_to_consider=None,
+                                                column_for_cutoff="combined_score"):
+        if debug:
+            start_time = time.time()
+        scores_to_aggregate = self.restrict_results(
+            leaf_scores.query("leaf_class_id.notnull() and vision_score > 0"), debug,
+            score_ratio_cutoff, max_leaf_scores_to_consider, column_for_cutoff
+        )
+
+        positions = np.asarray(scores_to_aggregate["spatial_class_id"], dtype=np.int32)
+        vision_scores = self.taxonomy_length_zeros()
+        combined_scores = self.taxonomy_length_zeros()
+        dggd_combined_scores = self.taxonomy_length_zeros()
+        vision_scores[positions] = leaf_scores["normalized_vision_score"][positions]
+        combined_scores[positions] = leaf_scores["combined_score"][positions]
+        dggd_combined_scores[positions] = leaf_scores["dggd_combined"][positions]
+
+        aggregate_taxonomy_up_inplace(
+            self.taxonomy.aggregation_index.parent_position,
+            self.taxonomy.aggregation_index.postorder,
+            min_arrays=(),
+            max_arrays=(),
+            sum_arrays=(
+                vision_scores,
+                combined_scores,
+                dggd_combined_scores
+            )
+        )
+
+        if debug:
+            print("aggregate_results_new_scoring: %0.2fms" % ((time.time() - start_time) * 1000.))
+            start_time = time.time()
+
+        leaf_scores = leaf_scores.copy(deep=False)
+        leaf_scores["aggregated_vision_score"] = vision_scores
+        leaf_scores["aggregated_combined_score"] = combined_scores
+        leaf_scores["aggregated_geo_score"] = leaf_scores["geo_score"]
+        leaf_scores["aggregated_geo_threshold"] = leaf_scores["geo_threshold"]
+        leaf_scores["dggd_combined_aggregated"] = dggd_combined_scores
+
+        sum_of_genus_diff_combined = leaf_scores.query("leaf_class_id.notnull()")["dggd_combined_aggregated"].sum()
+        leaf_scores["dggd_combined_normalized"] = leaf_scores["dggd_combined_aggregated"] / sum_of_genus_diff_combined
+        normalized_combined_score_post_geo = combined_scores / sum_of_genus_diff_combined
+        # As with the original scoring, taxa below genus retain their original combined scores,
+        # re-normalized. Genera and above use the dggd_combined scores with enhanced weight
+        leaf_scores["normalized_aggregated_combined_score"] = np.where(
+            leaf_scores["rank_level"] < 20,
+            normalized_combined_score_post_geo,
+            leaf_scores["dggd_combined_normalized"],
+        )
+
+        sum_of_root_node_aggregated_vision_scores = leaf_scores.query(
+            "parent_taxon_id.isnull()")["aggregated_vision_score"].sum()
+        leaf_scores["normalized_aggregated_vision_score"] = leaf_scores[
+            "aggregated_vision_score"] / sum_of_root_node_aggregated_vision_scores
+
+        if debug:
+            print("aggregate_results_new_scoring normalization: %0.2fms" % ((time.time() - start_time) * 1000.))
+        return leaf_scores
 
     def h3_04_geo_results_for_taxon_and_cell(self, taxon_id, lat, lng):
         if lat is None or lng is None:
@@ -695,6 +1136,7 @@ class InatInferrer:
             )
             # if there is only 1 Mammals taxon (human), return all non-human results
             if mammals_results.index.size == 1:
+                # TODO: check if this should use leaf_scores, not top_results
                 non_human_results = top_results.query(
                     f"taxon_id != {self.taxonomy.human_taxon['taxon_id']}"
                 )
@@ -815,12 +1257,22 @@ class InatInferrer:
         return cache_path
 
     @staticmethod
-    def add_geo_score_column(dataframe, raw_geo_scores, column_name="geo_score"):
+    def add_geo_score_column(dataframe, raw_geo_scores, column_name="geo_score", inferrer=None):
         no_geo_scores = (raw_geo_scores is None)
         # add a column for geo scores
         if column_name in dataframe.columns:
             dataframe.drop(column_name, axis=1)
-        dataframe[column_name] = 0 if no_geo_scores else raw_geo_scores
+        if no_geo_scores:
+            dataframe[column_name] = 0
+        elif inferrer.innernode_geomodel:
+            spatial_scores = inferrer.taxonomy.spatial_df.copy()
+            spatial_scores["geo_score"] = raw_geo_scores
+            dataframe = pd.merge(spatial_scores,
+                                 dataframe[["taxon_id", "vision_score"]],
+                                 on="taxon_id",
+                                 how="outer")
+        else:
+            dataframe[column_name] = raw_geo_scores
 
         # set a lower limit for geo scores if there are any
         normalized_column_name = f"normalized_{column_name}"
@@ -828,6 +1280,7 @@ class InatInferrer:
             dataframe.drop(normalized_column_name, axis=1)
         dataframe[normalized_column_name] = 0 if no_geo_scores \
             else dataframe[column_name].clip(InatInferrer.MINIMUM_GEO_SCORE, None)
+        return dataframe
 
     @staticmethod
     def prepare_image_for_inference(file_path):
@@ -886,10 +1339,10 @@ class InatInferrer:
         # similarly, the centroid may be on the other side of the antimedirian, so lookup
         # cells that might be just over the antimeridian on either side
         antimedirian_condition = ""
-        if bounds[1] < -179:
-            antimedirian_condition = "or (lng > 179)"
-        elif bounds[3] > 179:
-            antimedirian_condition = "or (lng < -179)"
+        if bounds[1] < -178:
+            antimedirian_condition = "or (lng > 178)"
+        elif bounds[3] > 178:
+            antimedirian_condition = "or (lng < -178)"
 
         # query for cells wtihin the buffered bounds, and potentially
         # on the other side of the antimeridian
@@ -913,5 +1366,20 @@ class InatInferrer:
                         f"GT:{round(row.aggregated_geo_threshold, 4)}, "
                         f"C:{round(row.aggregated_combined_score, 4)}, "
                         f"NC:{round(row.normalized_aggregated_combined_score, 4)}]"
+        ))
+        print("")
+
+    def print_aggregated_scores_new_aggregation(aggregated_scores):
+        thresholded_results = aggregated_scores.query(
+            "combined_score > 0.00005"
+        )
+        print("\nTree of aggregated results:")
+        ModelTaxonomyDataframe.print(thresholded_results, display_taxon_lambda=(
+            lambda row: f"{row.name}    ["
+                        f"ID:{row.taxon_id}, "
+                        f"NV:{round(row.normalized_vision_score, 4)}, "
+                        f"G:{round(row.geo_score, 4)}, "
+                        f"GT:{round(row.geo_threshold, 4)}, "
+                        f"NC:{round(row.normalized_combined_score, 4)}]"
         ))
         print("")

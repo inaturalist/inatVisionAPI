@@ -1,4 +1,5 @@
 import tensorflow as tf
+import numpy as np
 
 
 class VisionInferrer:
@@ -56,7 +57,7 @@ class VisionInferrer:
     def process_image(self, image):
         layer_results = self.infer(image)
         return {
-            "predictions": layer_results[0][0],
+            "predictions": np.asarray(layer_results[0][0], dtype=np.float32),
             "features": layer_results[1][0],
         }
 
